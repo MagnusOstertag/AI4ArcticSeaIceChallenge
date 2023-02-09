@@ -1,6 +1,8 @@
 # ignore the current model, if not part of the archive
 best_model
 
+.vscode/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
