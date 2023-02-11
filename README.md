@@ -22,24 +22,27 @@ See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to 
 
 1. Pizza Marinara - 4-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32]` (without mlflow)
 2. Pizza Margaritha - 8-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32],` (did only train till epoch 40 because of mlflow error)
+3. -> Pizza Funghi - 8-lvl u-net with early stopping, regression loss and output about what is bad
 
 ## Problems
 
 - test upload would not run because the kernel dies. You have to comment out the plotting code as there is a strange memory leak in matplotlib `cbook`.
 - mlflow error `OperationError`
+- the shape of the output is super strange: `(batch_size, 12, patch_size, patch_size)`
 
 ## Ideas
 
 - statistics of the train and the test datasets based on their file-names
 - early stopping
+- use a regression loss (not only as a metric) for the sea ice concentration (SIC)
+- understand under which conditions the predictions are the worst
 
 ### TODO
 
-- handle as a regression problem what is a regression problem: SIC
 - mlflow error
-- understand under which conditions the predictions are the worst
-- upload this as an artifact
-- transfer learning
+- upload error per condition as an artifact
 - based on the different train and test distributions, featureize and reweight
-
-
+- transfer learning
+- play with the number of epochs/early stopping, patch_size, learning rate (cooling)
+- attention u-net?
+- inception u-net
