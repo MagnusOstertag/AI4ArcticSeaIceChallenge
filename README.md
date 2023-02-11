@@ -22,7 +22,9 @@ See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to 
 
 1. Pizza Marinara - 4-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32]` (without mlflow)
 2. Pizza Margaritha - 8-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32],` (did only train till epoch 40 because of mlflow error)
-3. -> Pizza Funghi - 8-lvl u-net with early stopping, regression loss and output about what is bad
+3. Pizza Basilico - 8-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32],` but with a lot more epochs (it has to be better than Marinara!)
+   1. `_bruciato` is it after 100 epochs, the other one is the best model on the test score
+4. -> Pizza Funghi - 8-lvl u-net with early stopping, regression loss and output about what is bad
 
 ## Problems
 
