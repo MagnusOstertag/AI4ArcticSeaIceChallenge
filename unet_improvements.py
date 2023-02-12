@@ -44,7 +44,10 @@ class UNet(torch.nn.Module):
 
         self.sic_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0], output_n=options['n_classes']['SIC'])
         self.sod_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0], output_n=options['n_classes']['SOD'])
-        self.floe_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0], output_n=options['n_classes']['FLOE'])
+        if options['loss_sic'] == 'classification':
+            self.floe_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0], output_n=options['n_classes']['FLOE'])
+        elif options['loss_sic'] == 'regression':
+            self.floe_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0], output_n=1)
 
     def forward(self, x):
         """Forward model pass."""
