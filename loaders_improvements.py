@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Pytorch Dataset class for training. Function used in train.py."""
+"""Pytorch Dataset class for training. Function used in train.py.
+   Extends the class to return also metadata of each scene on which training is performed."""
 
 # -- File info -- #
 __author__ = 'Andreas R. Stokholm'
@@ -20,6 +21,7 @@ import numpy as np
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
+import pandas as pd
 
 # -- Proprietary modules -- #
 
@@ -27,9 +29,10 @@ from torch.utils.data import Dataset
 class AI4ArcticChallengeDataset(Dataset):
     """Pytorch dataset for loading batches of patches of scenes from the ASID V2 data set."""
 
-    def __init__(self, options, files):
+    def __init__(self, options, files, get_metadata=False):
         self.options = options
         self.files = files
+        self.metadata_flag = get_metadata
 
         # Channel numbers in patches, includes reference channel.
         self.patch_c = len(self.options['train_variables']) + len(self.options['charts'])
@@ -97,7 +100,8 @@ class AI4ArcticChallengeDataset(Dataset):
         # In case patch does not contain any valid pixels - return None.
         else:
             patch = None
-
+        if self.metadata_flag:
+            return patch, row_rand, col_rand
         return patch
 
 
@@ -138,11 +142,20 @@ class AI4ArcticChallengeDataset(Dataset):
             4D torch tensor; ready training data.
         y : Dict
             Dictionary with 3D torch tensors for each chart; reference data for training data x.
+        mask : Dict
+            Dictionary with 3D torch tensors for each chart; mask for training data x.
+        metadata : pd.DataFrame
+            Pandas df with metadata for each patch. Only if self.metadata_flag is True
         """
         # Placeholder to fill with data.
         patches = np.zeros((self.options['batch_size'], self.patch_c,
                             self.options['patch_size'], self.options['patch_size']))
         sample_n = 0
+        metadata_batch = pd.DataFrame(columns=['sentinel_mission_identifier',
+                                        'image_acquisition_start_date',
+                                        'image_acquisition_start_date_year', 'image_acquisition_start_date_month', 'image_acquisition_start_date_hour',
+                                        'row_rand', 'col_rand', 'sample_n',
+                                        'icechart_provider', 'location'])
 
         # Continue until batch is full.
         while sample_n < self.options['batch_size']:
@@ -153,7 +166,10 @@ class AI4ArcticChallengeDataset(Dataset):
             scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[scene_id]))
             # - Extract patches
             try:
-                scene_patch = self.random_crop(scene)
+                if self.metadata_flag:
+                    scene_patch, row_rand, col_rand = self.random_crop(scene)
+                else:
+                    scene_patch = self.random_crop(scene)
             except:
                 print(f"Cropping in {self.files[scene_id]} failed.")
                 print(f"Scene size: {scene['SIC'].values.shape} for crop shape: ({self.options['patch_size']}, {self.options['patch_size']})")
@@ -163,21 +179,60 @@ class AI4ArcticChallengeDataset(Dataset):
             if scene_patch is not None:
                 # -- Stack the scene patches in patches
                 patches[sample_n, :, :, :] = scene_patch
-                sample_n += 1 # Update the index.
+                sample_n += 1  # Update the index.
+
+                if self.metadata_flag:
+                    # -- Add metadata to metadata_batch
+                    file_name = scene.attrs['original_id']
+                    file_name_split = file_name.split('_')
+
+
+                    sentinel_mission_identifier = file_name_split[0]
+                    image_acquisition_start_date = file_name_split[4]
+                    image_acquisition_start_date = pd.to_datetime(image_acquisition_start_date, format='%Y%m%dT%H%M%S')
+                    image_acquisition_start_date_year = image_acquisition_start_date.year
+                    image_acquisition_start_date_month = image_acquisition_start_date.month
+                    image_acquisition_start_date_hour = image_acquisition_start_date.hour
+                    icechart_provider = str(scene.attrs['ice_service'])
+                    if icechart_provider == 'cis':
+                        location = file_name_split[11]
+                    elif icechart_provider == 'dmi':
+                        location = file_name_split[12]
+
+                    metadata_sample = pd.Series({'sentinel_mission_identifier': sentinel_mission_identifier,
+                                                'image_acquisition_start_date': image_acquisition_start_date,
+                                                'image_acquisition_start_date_year': image_acquisition_start_date_year,
+                                                'image_acquisition_start_date_month': image_acquisition_start_date_month,
+                                                'image_acquisition_start_date_hour': image_acquisition_start_date_hour,
+                                                'row_rand': row_rand,
+                                                'col_rand': col_rand,
+                                                'sample_n': sample_n,
+                                                'icechart_provider': icechart_provider,
+                                                'location': location})
+                    metadata_batch = pd.concat([metadata_batch, metadata_sample.to_frame().T], ignore_index=True)
 
         # Prepare training arrays
         x, y = self.prep_dataset(patches=patches)
 
-        return x, y
+        # - calculate mask
+        masks = {}
+        for chart in self.options['charts']:
+            masks[chart] = (y[chart] == self.options['class_fill_values'][chart]).squeeze()
+
+        if self.metadata_flag:
+            return x, y, masks, metadata_batch
+        else:
+            return x, y, masks, None
 
 
 class AI4ArcticChallengeTestDataset(Dataset):
     """Pytorch dataset for loading full scenes from the ASID ready-to-train challenge dataset for inference."""
 
-    def __init__(self, options, files, test=False):
+    def __init__(self, options, files, test=False, get_metadata=False):
         self.options = options
         self.files = files
         self.test = test
+        self.metadata_flag = get_metadata
 
     def __len__(self):
         """
@@ -207,7 +262,7 @@ class AI4ArcticChallengeTestDataset(Dataset):
         x = torch.cat((torch.from_numpy(scene[self.options['sar_variables']].to_array().values).unsqueeze(0),
                       torch.nn.functional.interpolate(
                           input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values).unsqueeze(0),
-                          size=scene['nersc_sar_primary'].values.shape, 
+                          size=scene['nersc_sar_primary'].values.shape,
                           mode=self.options['loader_upsampling'])),
                       axis=1)
         
@@ -233,9 +288,16 @@ class AI4ArcticChallengeTestDataset(Dataset):
             Dict with 2D torch tensors; mask for each chart for loss calculation. Contain only SAR mask if test is true.
         name : str
             Name of scene.
-
+        metadata: pd.DataFrame
+            Pandas df with metadata for each scene. Only if self.metadata is True.
         """
         scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[idx]))
+
+        metadata_scene = pd.DataFrame(columns=['sentinel_mission_identifier',
+                                'image_acquisition_start_date',
+                                'image_acquisition_start_date_year', 'image_acquisition_start_date_month', 'image_acquisition_start_date_hour',
+                                'row_rand', 'col_rand', 'sample_n',
+                                'icechart_provider', 'location'])
 
         x, y = self.prep_scene(scene)
         name = self.files[idx]
@@ -248,6 +310,44 @@ class AI4ArcticChallengeTestDataset(Dataset):
         else:
             masks = (x.squeeze()[0, :, :] == self.options['train_fill_value']).squeeze()
 
+        # - get metadata
+        if self.metadata_flag:
+            file_name = scene.attrs['original_id']
+            file_name_split = file_name.split('_')
+
+
+            sentinel_mission_identifier = file_name_split[0]
+            image_acquisition_start_date = file_name_split[4]
+            image_acquisition_start_date = pd.to_datetime(image_acquisition_start_date, format='%Y%m%dT%H%M%S')
+            image_acquisition_start_date_year = image_acquisition_start_date.year
+            image_acquisition_start_date_month = image_acquisition_start_date.month
+            image_acquisition_start_date_hour = image_acquisition_start_date.hour
+            icechart_provider = str(scene.attrs['ice_service'])
+            if icechart_provider == 'cis':
+                location = file_name_split[11]
+            elif icechart_provider == 'dmi':
+                location = file_name_split[12]
+
+            # -- non-useful metadata
+            row_rand = np.nan
+            col_rand = np.nan
+            sample_n = np.nan
+
+            metadata_scene = pd.DataFrame({'sentinel_mission_identifier': sentinel_mission_identifier,
+                                        'image_acquisition_start_date': image_acquisition_start_date,
+                                        'image_acquisition_start_date_year': image_acquisition_start_date_year,
+                                        'image_acquisition_start_date_month': image_acquisition_start_date_month,
+                                        'image_acquisition_start_date_hour': image_acquisition_start_date_hour,
+                                        'row_rand': row_rand,
+                                        'col_rand': col_rand,
+                                        'sample_n': sample_n,
+                                        'icechart_provider': icechart_provider,
+                                        'location': location}, index=[0])
+
+        if self.metadata_flag and not self.test:
+            return x, y, masks, name, metadata_scene
+        elif not self.test:
+            return x, y, masks, name, None
         return x, y, masks, name
 
 
