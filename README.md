@@ -38,11 +38,11 @@ See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to 
 - early stopping
 - use a regression loss (not only as a metric) for the sea ice concentration (SIC)
 - transfer learning
+- understand under which conditions the predictions are the worst
+- upload error per condition as an artifact
 
 ### TODO
 
-- understand under which conditions the predictions are the worst
-- upload error per condition as an artifact
 - based on the different train and test distributions, featureize and reweight
 - play with the number of epochs/early stopping, patch_size, learning rate (cooling)
 - attention u-net?
