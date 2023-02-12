@@ -3,6 +3,9 @@ best_model
 
 .vscode/
 
+# for now the mlruns are locally not tracked
+mlruns/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
