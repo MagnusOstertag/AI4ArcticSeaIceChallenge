@@ -15,7 +15,7 @@ __date__ = '2022-09-20'
 # Charts in the dataset
 CHARTS = ['SIC', 'SOD', 'FLOE']
 
-# Variables in the ASID3 challenge ready-to-train dataset
+# Variables in the ASID3 challenge ready-to-train dataset - 24 variables.
 SCENE_VARIABLES = [
     # -- Sentinel-1 variables -- #
     'nersc_sar_primary', 

@@ -22,6 +22,14 @@ import torch
 import xarray as xr
 from torch.utils.data import Dataset
 import pandas as pd
+import json
+import gc
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from utils import SIC_GROUPS, SOD_GROUPS, FLOE_GROUPS
+from utils import SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP
 
 # -- Proprietary modules -- #
 
@@ -36,6 +44,163 @@ class AI4ArcticChallengeDataset(Dataset):
 
         # Channel numbers in patches, includes reference channel.
         self.patch_c = len(self.options['train_variables']) + len(self.options['charts'])
+
+        # Create a baseline probablity for sampling each scene.
+        # The problem is handled on the scene level, no regard for the randomn cropping.
+        # But this may also reduce the chance for overfitting.
+        if self.options['resampling']:
+            # create a pd dataframe for the files and the seed (like distributions), if it does not exist
+            # thus we do not have to generate it every time
+            path_to_distribution = os.path.join(self.options['path_to_data'], f"distribution_{self.options['validation_seed']}.csv")
+            if os.path.exists(path_to_distribution):
+                self.distribution = pd.read_csv(path_to_distribution)
+            else:
+                # code close to the one from distributions.ipynb
+                with open('datalists/testset.json', 'r') as f:
+                    testset = json.load(f)
+                trainset = options['train_list_extendedNames']
+                valset = options['validate_list_extendedNames']
+
+                # create dataframes from the lists
+                trainset_df = pd.DataFrame(trainset, columns=['filename'])
+                testset_df = pd.DataFrame(testset, columns=['filename'])
+                valset_df = pd.DataFrame(valset, columns=['filename'])
+
+                # add a new column indicating the dataset
+                trainset_df['dataset'] = 'train'
+                testset_df['dataset'] = 'test'
+                valset_df['dataset'] = 'val'
+
+                # concatenate the dataframes
+                self.distribution = pd.concat([trainset_df, testset_df, valset_df], ignore_index=True)
+
+                # check for duplicates
+                if self.distribution.duplicated(subset='filename').any():
+                    raise ValueError('There are duplicates in the distribution dataframe')
+
+                # split the filename into the appropriate columns
+                self.distribution["Sentinel_mission_identifier"] = self.distribution['filename'].str.split("_").str[0]
+                self.distribution["misc"] = self.distribution['filename'].str.split("_").str[1:4]
+                self.distribution["image_acquisition_start_date"] = self.distribution['filename'].str.split("_").str[4]
+                self.distribution["image_acquisition_start_date"] = pd.to_datetime(self.distribution["image_acquisition_start_date"], format='%Y%m%dT%H%M%S')
+                self.distribution["image_acquisition_end_date"] = self.distribution['filename'].str.split("_").str[5]
+                self.distribution["image_acquisition_end_date"] = pd.to_datetime(self.distribution["image_acquisition_end_date"], format='%Y%m%dT%H%M%S')
+                self.distribution["image_type"] = self.distribution['filename'].str.split("_").str[9]
+                self.distribution["icechart_provider"] = self.distribution['filename'].str.split("_").str[10]
+                self.distribution["location"] = np.nan
+                self.distribution["icechart_date"] = np.nan
+
+                for i in range(0, len(self.distribution)):
+                    if self.distribution["icechart_provider"][i] == 'cis':
+                        self.distribution.loc[(i, "location")] = self.distribution['filename'][i].split("_")[11]
+                        try:
+                            self.distribution.loc[(i, "icechart_date")] = self.distribution['filename'][i].split("_")[12]
+                            self.distribution.loc[(i, "icechart_date")] = pd.to_datetime(self.distribution["icechart_date"][i], format='%Y%m%dT%H%MZ')
+                        except ValueError:
+                            self.distribution.loc[(i, "icechart_date")] = np.nan
+                    elif self.distribution["icechart_provider"][i] == 'dmi':
+                        try:
+                            self.distribution.loc[(i, "icechart_date")] = self.distribution['filename'][i].split("_")[11]
+                            self.distribution.loc[(i, "icechart_date")] = pd.to_datetime(self.distribution["icechart_date"][i], format='%Y%m%d%H%M%S')
+                        except ValueError:
+                            self.distribution.loc[(i, "icechart_date")] = np.nan
+                        self.distribution.loc[(i, "location")] = self.distribution['filename'][i].split("_")[12]
+
+                # add columns called hour, month, year based on the image_acquisition_start_date
+                self.distribution["month"] = self.distribution["image_acquisition_start_date"].dt.month.astype(int)
+                self.distribution["hour"] = self.distribution["image_acquisition_start_date"].dt.hour.astype(int)
+                self.distribution["year"] = self.distribution["image_acquisition_start_date"].dt.year.astype(int)
+
+                # create empty columns
+                classes = {}
+                classes['SIC'] = list(SIC_GROUPS.keys()) + [SIC_LOOKUP['mask']]
+                classes['SOD'] = list(SOD_GROUPS.keys()) + [SOD_LOOKUP['mask']]
+                classes['FLOE'] = list(FLOE_GROUPS.keys()) + [FLOE_LOOKUP['mask']]
+
+                self.distribution["size"] = np.nan
+                for key, value in classes.items():
+                    for i in range(0, len(value)):
+                        self.distribution[f'{key}_{str(value[i])}'] = np.nan
+
+                # the prepared scenes are uniquely identified by <test_data>/<image_acquisition_start_date>_<icechart_provider>_prep.nc
+                for i in range(0, len(self.distribution)):
+                    gc.collect()
+
+                    # create the path and get the size of the file
+                    path = None
+                    if self.distribution["dataset"][i] == 'train' or self.distribution["dataset"][i] == 'val':
+                        try:
+                            path = os.path.join(self.options['path_to_processed_data'], self.distribution["image_acquisition_start_date"][i].strftime('%Y%m%dT%H%M%S') + '_' + self.distribution["icechart_provider"][i] + '_prep.nc')
+                            self.distribution.loc[(i, "size")] = os.path.getsize(path)
+                        except:
+                            print(self.distribution.iloc[i])
+                    elif self.distribution["dataset"][i] == 'test':
+                        try:
+                            path = os.path.join(self.options['path_to_processed_data'], 'test_data', self.distribution["image_acquisition_start_date"][i].strftime('%Y%m%dT%H%M%S') + '_' + self.distribution["icechart_provider"][i] + '_prep.nc')
+                            self.distribution.loc[(i, "size")] = os.path.getsize(path)
+                        except FileNotFoundError:
+                            print(self.distribution.loc[i])
+
+                    # open the file and get the distribution of the different chart classes
+                    scene = xr.open_dataset(path)
+
+                    for chart, value in classes.items():
+                        for j in range(0, len(value)):
+                            if self.distribution["dataset"][i] == 'dataset':
+                                self.distribution.loc[(i, f'{chart}_{str(value[j])}')] = np.count_nonzero(scene[chart] == value[j])
+                            elif self.distribution["dataset"][i] == 'testset':
+                                continue
+
+                    del scene
+                
+                # visualize the distribution and save pictures
+                if self.options['visualize_distribution']:
+                    path_to_visualization = os.path.join(self.options['path_to_data'],
+                                                         f"distribution_{self.options['validation_seed']}_")
+
+                    # plot the distribution of the months, grouped by dataset versus testset
+                    # norm on the size column
+                    # show one plot not weighted on the size and one weighted on the size of the scenes
+                    fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
+                    sns.histplot(y="month", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[0])
+                    sns.histplot(y="month", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[1], weights='size', legend=False)
+                    plt.savefig(f'{path_to_visualization}month.png')
+
+                    # plot the distribution of the years, grouped by dataset versus testset
+                    fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
+                    sns.histplot(y="year", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[0])
+                    sns.histplot(y="year", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[1], weights='size', legend=False)
+                    plt.savefig(f'{path_to_visualization}year.png')
+
+                    # plot the distribution of the location, grouped by dataset versus testset
+                    fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
+                    sns.histplot(y="location", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[0])
+                    sns.histplot(y="location", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[1], weights='size', legend=False)
+                    plt.savefig(f'{path_to_visualization}location.png')
+
+                    # plot the distribution of the icechart_provider, grouped by dataset versus testset
+                    fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
+                    sns.histplot(y="icechart_provider", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[0])
+                    sns.histplot(y="icechart_provider", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[1], weights='size', legend=False)
+                    plt.savefig(f'{path_to_visualization}icechart_provider.png')
+
+                    # plot the distribution of the Sentinel_mission_identifier, grouped by dataset versus testset
+                    fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
+                    sns.histplot(y="Sentinel_mission_identifier", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[0])
+                    sns.histplot(y="Sentinel_mission_identifier", hue="dataset", data=self.distribution, stat='percent', common_norm=False, ax=axs[1], weights='size', legend=False)
+                    plt.savefig(f'{path_to_visualization}Sentinel_mission_identifier.png')
+
+                    # collect as much garbage as possible
+                    del fig, axs, path_to_visualization
+                    plt.clf()
+                    plt.close()
+                    gc.collect()
+
+                # save the distribution to a csv file
+                self.distribution.to_csv(path_to_distribution)
+            
+            # pre-calulate the weights for the different classes
+            # TODO
 
     def __len__(self):
         """
@@ -160,7 +325,7 @@ class AI4ArcticChallengeDataset(Dataset):
         # Continue until batch is full.
         while sample_n < self.options['batch_size']:
             # - Open memory location of scene. Uses 'Lazy Loading'.
-            scene_id = np.random.randint(low=0, high=len(self.files), size=1).item()
+            scene_id = self.sampler()
 
             # - Load scene
             scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[scene_id]))
@@ -223,6 +388,32 @@ class AI4ArcticChallengeDataset(Dataset):
             return x, y, masks, metadata_batch
         else:
             return x, y, masks, None
+
+    def sampler(self, mode='random'):
+        """
+        Returns the id of a scene to sample from.
+        The resampler takes the following factors into account:
+        - The number of samples already from a scene divided by the size of the scene.
+        - The difficulity of a scene as judged by human experts.
+        - The distribution of the test set regarding geographic location, time of year # , and ice type.
+        - The previous performance of the model on a scene.
+
+        Parameters
+        ----------
+        mode : str
+            'random' or 'importance'. Default is 'random'.
+
+        Returns
+        -------
+        scene_id : int
+            Id of the scene to sample from.
+        """
+        if not self.options['resampling']:
+            return np.random.randint(low=0, high=len(self.files), size=1).item()
+        elif self.options['resampling']:
+            # the id is the index of the scene in 
+            return 0
+
 
 
 class AI4ArcticChallengeTestDataset(Dataset):
