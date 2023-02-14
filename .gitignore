@@ -3,7 +3,9 @@ best_model
 
 .vscode/
 
-# for now the mlruns are locally not tracked
+# for now the runs, mlruns, metadata are locally not tracked
+metadata_runs/
+models/
 mlruns/
 
 # Byte-compiled / optimized / DLL files
