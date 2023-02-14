@@ -24,7 +24,6 @@ See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to 
 2. `Pizza Margaritha` - 8-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32]` (did only train till epoch 40 because of mlflow error)
 3. `Pizza Basilico` - 8-lvl u-net: `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32]` but with a lot more epochs (it has to be better than Marinara!)
    1. `_bruciato` is it after 100 epochs, the other one is the best model on the test score
-4. -> Pizza Funghi - 8-lvl u-net with early stopping, regression loss and output about what is bad
 
 ## Problems
 
@@ -40,10 +39,21 @@ See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to 
 - transfer learning
 - understand under which conditions the predictions are the worst
 - upload error per condition as an artifact
-- based on the different train and test distributions, featureize and reweight
+- based on the different train and test distributions, featureize and resample
 
 ### TODO
 
-- play with the number of epochs/early stopping, patch_size, learning rate (cooling)
-- attention u-net?
-- inception u-net
+@Magnus
+- ask why the computing time was reduced
+- re-check the resampling: Is it any good (not order independent, not normalized, ...)?
+- stick `Quattro Formaggi` together from the improvements and transfer_learning
+
+@Toni
+- extend the architecture: attention u-net? / residual connections / inception u-net
+- include the additional information such as ice chart provider, location/difficult location and month
+- play with the learning rate (!) (cooling), number of epochs/early stopping, patch_size, 
+
+### Timetable
+
+-> 22.02.: all ToDos done, most training done, mail @Lombardi
+approx. 28.02.: presentation
