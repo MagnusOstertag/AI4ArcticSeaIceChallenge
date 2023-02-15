@@ -329,9 +329,13 @@ class AI4ArcticChallengeDataset(Dataset):
             plot_args_two['weights'] = 'size'
             postfix = "_size"
         else:
+            total_n_samples_train = self.distribution[self.distribution['dataset'] == 'train'].shape[0]
+            total_n_samples_test = self.distribution[self.distribution['dataset'] == 'test'].shape[0]
+
             plot_args_two = copy.deepcopy(plot_args_one)
             distribution_local = copy.deepcopy(self.distribution[self.distribution['dataset'] != 'val'])
-            distribution_local.loc[distribution_local['dataset'] == 'test', 'weight'] = 1.
+            distribution_local.loc[distribution_local['dataset'] == 'test', 'weight'] = total_n_samples_train / total_n_samples_test
+            plot_args_two['common_norm'] = False  # via definition of the above weights
             plot_args_two['data'] = distribution_local
             plot_args_two['legend'] = False
             plot_args_two['weights'] = 'weight'
@@ -377,11 +381,16 @@ class AI4ArcticChallengeDataset(Dataset):
 
     def calculate_weights(self):
         """
-        Calculate the weights for the resampling. This is done quiet dirty and not very precise. But I hope it helps.
+        Calculate the rescaling weights for the resampling.
+        For every sample, a weight is calculated which follows the distribution of the test set.
+        It is necessary because test distribution is (purposefully) altered, as experts have selected the most difficult scenes to be in the test set.
+
+        Only weighting by the location makes the distributions in the relevant variables (month, year, icechart_provider, Sentinel_mission_identifier) already pretty similar.
+        # TODO: find a better method!
 
         Problem: For the discrete multi-class variables, some are not represented in the test set at all. Either I have to
            - remove them from the training set
-           - cannot fully represent the test set distribution. 
+           - cannot fully represent the test set distribution.
         I opted for the second option. Each class has at least a ratio of 1/(n_classes*3) of the test set.
         """
         # pre-calulate the weights for the training
@@ -441,27 +450,28 @@ class AI4ArcticChallengeDataset(Dataset):
         # # weighting by the size of the scenes
         # TODO?
 
+        # for now only weighting by the location until I found a better solution
         # doing the weighting and normalizing after every step (only really needed for location)
-        self.distribution['weight'] *= self.distribution['month_weight']
-        print(f"weight values after month: {self.distribution['weight'].values.sum()}")
-        self.distribution['weight'] /= self.distribution['weight'].sum()
+        # self.distribution['weight'] *= self.distribution['month_weight']
+        # print(f"weight values after month: {self.distribution['weight'].values.sum()}")
+        # self.distribution['weight'] /= self.distribution['weight'].sum()
 
-        self.distribution['weight'] *= self.distribution['icechart_provider_weight']
-        print(f"weight values after icechart_provider: {self.distribution['weight'].values.sum()}")
-        self.distribution['weight'] /= self.distribution['weight'].sum()
+        # self.distribution['weight'] *= self.distribution['icechart_provider_weight']
+        # print(f"weight values after icechart_provider: {self.distribution['weight'].values.sum()}")
+        # self.distribution['weight'] /= self.distribution['weight'].sum()
 
-        self.distribution['weight'] *= self.distribution['Sentinel_mission_identifier_weight']
-        print(f"weight values after Sentinel_mission_identifier: {self.distribution['weight'].values.sum()}")
-        self.distribution['weight'] /= self.distribution['weight'].sum()
+        # self.distribution['weight'] *= self.distribution['Sentinel_mission_identifier_weight']
+        # print(f"weight values after Sentinel_mission_identifier: {self.distribution['weight'].values.sum()}")
+        # self.distribution['weight'] /= self.distribution['weight'].sum()
 
         self.distribution['weight'] *= self.distribution['location_weight']
         print(f"weight values after location: {self.distribution['weight'].values.sum()}")
         self.distribution['weight'] /= self.distribution['weight'].sum()
 
-        self.distribution['weight'] *= self.distribution['difficult_location_weight']
-        print(f"weight values after difficult_location: {self.distribution['weight'].values.sum()}")
-        self.distribution['weight'] /= self.distribution['weight'].sum()
-        print(f"weight values after normalization: {self.distribution['weight'].values.sum()}")
+        # self.distribution['weight'] *= self.distribution['difficult_location_weight']
+        # print(f"weight values after difficult_location: {self.distribution['weight'].values.sum()}")
+        # self.distribution['weight'] /= self.distribution['weight'].sum()
+        # print(f"weight values after normalization: {self.distribution['weight'].values.sum()}")
 
     def calculate_distribution(self):
         # code close to the one from distributions.ipynb
@@ -541,7 +551,7 @@ class AI4ArcticChallengeDataset(Dataset):
                 try:
                     path = os.path.join(self.options['path_to_processed_data'], self.distribution["image_acquisition_start_date"][i].strftime('%Y%m%dT%H%M%S') + '_' + self.distribution["icechart_provider"][i] + '_prep.nc')
                     self.distribution.loc[(i, "size")] = os.path.getsize(path)
-                except:
+                except FileNotFoundError:
                     print(self.distribution.iloc[i])
             elif self.distribution["dataset"][i] == 'test':
                 try:
@@ -561,6 +571,7 @@ class AI4ArcticChallengeDataset(Dataset):
                         continue
 
             del scene
+
 
 class AI4ArcticChallengeTestDataset(Dataset):
     """Pytorch dataset for loading full scenes from the ASID ready-to-train challenge dataset for inference."""
@@ -717,4 +728,4 @@ def get_variable_options(train_options: dict):
     train_options['amsrenv_variables'] = [variable for variable in train_options['train_variables']
                                           if 'sar' not in variable and 'map' not in variable]
 
-    return train_options                             
+    return train_options
