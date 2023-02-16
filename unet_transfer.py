@@ -28,17 +28,15 @@ class UNetTrans(torch.nn.Module):
         # check whether we can even transfer this model
         for different_option in options['transfer_model_architecture']:
             if different_option != 'unet_conv_filters':
-                raise ValueError("""The transfer model architecture is not compatible 
-                                    with other differences than the filters
-                                    not implemented, yet.""")
-        
-        if options['transfer_model_architecture']['unet_conv_filters'] == options['unet_conv_filters'][:contract_n_oldModel+1]:
-            raise ValueError("""The transfer model architecture is not compatible 
-                                as the filters of the old model have to be a subset of the new model.""")
+                raise ValueError("""The transfer model architecture is not compatible with other differences than the filters not implemented, yet.""")
+
+        if options['transfer_model_architecture']['unet_conv_filters'] != options['unet_conv_filters'][:contract_n_oldModel+1]:
+            raise ValueError("""The transfer model architecture is not compatible as the filters of the old model have to be a subset of the new model.""")
 
         # initialize the model to transfer from
         oldModel_states = torch.load(options['transfer_model_path'])['model_state_dict']
-        
+        # print(oldModel_states.keys())
+
         # contract_n_newModel = len(options['unet_conv_filters']) - 1
 
         # stich downsampling part of the old model to the new model as its first part
@@ -86,27 +84,42 @@ class UNetTrans(torch.nn.Module):
 
         for expand_n in range(len(options['unet_conv_filters']), 1, -1):
             weights_list_exp = None
-            if contract_n_oldModel <= (expand_n+1):
-                weights_list_exp = [oldModel_states[f'expand_blocks.{old_expand_i}.double_conv.double_conv.0.weight'],# oldModel_states[f'expand_blocks.{old_expand_i}.expand_block.double_conv.0.bias']],
-                                    oldModel_states[f'expand_blocks.{old_expand_i}.double_conv.double_conv.3.weight'],]# oldModel_states[f'expand_blocks.{old_expand_i}.expand_block.double_conv.3.bias']]]
+            if expand_n <= (contract_n_oldModel+2):  # will only go down to 2 ??
+                # print(f'expand_n: {expand_n}, old_expand_i: {old_expand_i}, len(options[unet_conv_filters]): {len(options["unet_conv_filters"])}')
+                weights_list_exp = [oldModel_states[f'expand_blocks.{old_expand_i}.double_conv.double_conv.0.weight'],  # oldModel_states[f'expand_blocks.{old_expand_i}.expand_block.double_conv.0.bias']],
+                                    oldModel_states[f'expand_blocks.{old_expand_i}.double_conv.double_conv.3.weight'],]  # oldModel_states[f'expand_blocks.{old_expand_i}.expand_block.double_conv.3.bias']]]
                 old_expand_i += 1
             self.expand_blocks.append(ExpandingBlock(options=options,
                                                      input_n=options['unet_conv_filters'][expand_n - 1],
-                                                     output_n=options['unet_conv_filters'][expand_n - 2], 
+                                                     output_n=options['unet_conv_filters'][expand_n - 2],
                                                      weights_list=weights_list_exp))
 
-        self.sic_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0],
-                                          output_n=options['n_classes']['SIC'],
-                                          weights=[oldModel_states['sic_feature_map.feature_out.weight'],])
-                                                #    oldModel_states['sic_feature_map.feature_out.bias']])
+        if options['loss_sic'] == 'classification':
+            self.sic_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0],
+                                              output_n=options['n_classes']['SIC'],
+                                              weights=[oldModel_states['sic_feature_map.feature_out.weight'],])
+                                                    #    oldModel_states['sic_feature_map.feature_out.bias']])
+        elif options['loss_sic'] == 'regression':
+            # make the regression loss backwards compatible
+            weights_regression = oldModel_states['sic_feature_map.feature_out.weight']
+            print(f"Transfering a model with a SIC feature map of shape: {weights_regression.shape}")
+
+            if weights_regression.shape[0] == options['n_classes']['SIC']:  # where the classes are outputted
+                self.sic_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0],
+                                                  output_n=1,)
+                print(f"WARNING: Replaced the SIC feature map with a new one {self.sic_feature_map.state_dict} of shape: {list(self.sic_feature_map.state_dict().values())[0].shape}.")
+            else:
+                self.sic_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0],
+                                                  output_n=1,
+                                                  weights=[oldModel_states['sic_feature_map.feature_out.weight']])
+
         self.sod_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0],
                                           output_n=options['n_classes']['SOD'],
                                           weights=[oldModel_states['sod_feature_map.feature_out.weight'],])
-                                                #    oldModel_states['sod_feature_map.feature_out.bias']])
+                                                #    oldModel_states['sod_feature_map.feature_out.bias']])        
         self.floe_feature_map = FeatureMap(input_n=options['unet_conv_filters'][0],
                                            output_n=options['n_classes']['FLOE'],
-                                           weights=[oldModel_states['floe_feature_map.feature_out.weight'],])
-                                                    # oldModel_states['floe_feature_map.feature_out.bias']])
+                                           weights=[oldModel_states['floe_feature_map.feature_out.weight']])
 
     def forward(self, x):
         """Forward model pass."""
@@ -117,7 +130,7 @@ class UNetTrans(torch.nn.Module):
         up_idx = len(x_contract)
         for expand_block in self.expand_blocks:
             x_expand = expand_block(x_expand, x_contract[up_idx - 1])
-            up_idx -= 1            
+            up_idx -= 1  
 
         return {'SIC': self.sic_feature_map(x_expand),
                 'SOD': self.sod_feature_map(x_expand),

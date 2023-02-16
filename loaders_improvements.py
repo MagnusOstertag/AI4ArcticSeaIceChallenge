@@ -348,30 +348,35 @@ class AI4ArcticChallengeDataset(Dataset):
         sns.histplot(y="month", ax=axs[0], **plot_args_one)
         sns.histplot(y="month", ax=axs[1], **plot_args_two)
         plt.savefig(f'{path_to_visualization}month{postfix}.png')
+        plt.close()
 
         # plot the distribution of the years, grouped by dataset versus testset
         fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
         sns.histplot(y="year", ax=axs[0], **plot_args_one)
         sns.histplot(y="year", ax=axs[1], **plot_args_two)
         plt.savefig(f'{path_to_visualization}year{postfix}.png')
+        plt.close()
 
         # plot the distribution of the location, grouped by dataset versus testset
         fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
         sns.histplot(y="location", ax=axs[0], **plot_args_one)
         sns.histplot(y="location", ax=axs[1], **plot_args_two)
         plt.savefig(f'{path_to_visualization}location{postfix}.png')
+        plt.close()
 
         # plot the distribution of the icechart_provider, grouped by dataset versus testset
         fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
         sns.histplot(y="icechart_provider", ax=axs[0], **plot_args_one)
         sns.histplot(y="icechart_provider", ax=axs[1], **plot_args_two)
         plt.savefig(f'{path_to_visualization}icechart_provider{postfix}.png')
+        plt.close()
 
         # plot the distribution of the Sentinel_mission_identifier, grouped by dataset versus testset
         fig, axs = plt.subplots(ncols=2, sharey=True, figsize=(16, 8), dpi=400)
         sns.histplot(y="Sentinel_mission_identifier", ax=axs[0], **plot_args_one)
         sns.histplot(y="Sentinel_mission_identifier", ax=axs[1], **plot_args_two)
         plt.savefig(f'{path_to_visualization}Sentinel_mission_identifier{postfix}.png')
+        plt.close()
 
         # collect as much garbage as possible
         del fig, axs, path_to_visualization
