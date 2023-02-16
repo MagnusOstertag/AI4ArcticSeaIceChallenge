@@ -16,7 +16,12 @@ In the `venv` the above are installed, for the parameters:
 - `AI4ARCTIC_ENV` = '.'
 - use the global path for `AI4ARCTIC_DATA`
 
-See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to our quickstart script. 
+See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to our quickstart script.
+
+To connect to the `github` repository on the `EOxHub` it is necessary to run the following two commands every time a new session is started:
+
+- `eval "$(ssh-agent -s)"`
+- `ssh-add ~/.ssh/id_ed25519_autoice`
 
 ## Runs
 
