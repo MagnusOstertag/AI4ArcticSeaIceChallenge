@@ -304,9 +304,13 @@ class AI4ArcticChallengeDataset(Dataset):
         if not self.options['resampling']:
             return np.random.randint(low=0, high=len(self.files), size=1).item()
         elif self.options['resampling']:
-            # the id is the index of the scene in self.files/self.distribution
-            return np.random.choice(a=self.distribution.index, p=self.distribution['weight'].values,
-                                    size=1, replace=True).item()
+            # the id is the index of the scene in self.files
+            id = np.random.choice(a=self.distribution[self.distribution['dataset'] == 'train'].index,
+                                  p=self.distribution[self.distribution['dataset'] == 'train']['weight'].values,
+                                  size=1, replace=True).item()
+            filename_of_id = self.distribution.loc[(id, 'filename')]
+            filename_of_id = filename_of_id[17:32] + '_' + filename_of_id[77:80] + '_prep.nc'  # get the train_list filename
+            return self.files.index(filename_of_id)
 
     def visualize_distribution(self, weights=False):
         """
