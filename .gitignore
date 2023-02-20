@@ -3,6 +3,9 @@ best_model
 
 .vscode/
 
+# data
+data/
+
 # for now the runs, mlruns, metadata are locally not tracked
 metadata_runs/
 models/

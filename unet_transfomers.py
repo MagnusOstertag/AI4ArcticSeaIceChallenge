@@ -36,24 +36,44 @@ AUPRC = 'auprc'
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, is_residual: bool = False,
+    def __init__(self, options, in_channels: int, out_channels: int, is_residual: bool = False,
                  bias=False) -> None:
         super(ConvBlock, self).__init__()
+        print("Input channels:", in_channels)
+        print("Output channels:", out_channels)
+        print("Residual:", is_residual)
+        print("Bias:", bias)
+        print("Kernel size:", options['conv_kernel_size'])
+        print("Stride rate:", options['conv_stride_rate'])
+        print("Padding:", options['conv_padding'])
+        print("Padding style:", options['conv_padding_style'])
+        print("")
+
 
         self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=bias),
+            nn.Conv2d(in_channels=in_channels,
+                      out_channels=out_channels,
+                      kernel_size=options['conv_kernel_size'],
+                      stride=options['conv_stride_rate'],
+                      padding=options['conv_padding'],
+                      padding_mode=options['conv_padding_style'],
+                      bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU()
         )
 
         self.conv2 = nn.Sequential(
-            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=bias),
+            nn.Conv2d(out_channels, out_channels,kernel_size=options['conv_kernel_size'],
+                      stride=options['conv_stride_rate'],
+                      padding=options['conv_padding'],
+                      padding_mode=options['conv_padding_style'],
+                      bias=False),
             nn.BatchNorm2d(out_channels)
         )
 
         if is_residual:
             self.conv_skip = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, 1, bias=bias),
+                nn.Conv2d(in_channels, out_channels, kernel_size=(1, 1), bias=bias),
                 nn.BatchNorm2d(out_channels)
             )
 
@@ -75,13 +95,13 @@ class ConvBlock(nn.Module):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, is_residual: bool = False,
+    def __init__(self, options, in_channels: int, out_channels: int, is_residual: bool = False,
                  bias=False) -> None:
         super(EncoderLayer, self).__init__()
         # print("Input channels:", in_channels)
         # print("Output channels:", out_channels)
-        self.conv = ConvBlock(in_channels, out_channels, is_residual, bias)
-        self.pool = nn.MaxPool2d(2)
+        self.conv = ConvBlock(options, in_channels, out_channels, is_residual, bias)
+        self.pool = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # print(x.shape)
@@ -91,17 +111,76 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, is_residual: bool = False,
+    def __init__(self, options, in_channels: int, out_channels: int, is_residual: bool = False,
                  bias=False) -> None:
         super(DecoderLayer, self).__init__()
 
         self.transpose = nn.ConvTranspose2d(in_channels, out_channels, 2, 2, bias=bias)
-        self.conv = ConvBlock(in_channels, out_channels, is_residual, bias)
+        self.conv = ConvBlock(options, in_channels, out_channels, is_residual, bias)
 
     def forward(self, skip_x: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
         x = self.transpose(x)
         x = torch.cat((skip_x, x), dim=1)
         return self.conv(x)
+    
+############################################################
+    
+# class ExpandingBlock(torch.nn.Module):
+#     """Class to perform upward layer in the U-Net."""
+
+#     def __init__(self, options, input_n, output_n):
+#         super(ExpandingBlock, self).__init__()
+
+#         self.padding_style = options['conv_padding_style']
+#         self.upsample = torch.nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+#         self.double_conv = ConvBlock(options, input_n=input_n + output_n, output_n=output_n)
+
+#     def forward(self, x, x_skip):
+#         """Pass x through the upward layer and concatenate with opposite layer."""
+#         x = self.upsample(x)
+
+#         # Insure that x and skip H and W dimensions match.
+#         x = expand_padding(x, x_skip, padding_style=self.padding_style)
+#         x = torch.cat([x, x_skip], dim=1)
+
+#         return self.double_conv(x)
+    
+    
+# def expand_padding(x, x_contract, padding_style: str = 'constant'):
+#     """
+#     Insure that x and x_skip H and W dimensions match.
+#     Parameters
+#     ----------
+#     x :
+#         Image tensor of shape (batch size, channels, height, width). Expanding path.
+#     x_contract :
+#         Image tensor of shape (batch size, channels, height, width) Contracting path.
+#         or torch.Size. Contracting path.
+#     padding_style : str
+#         Type of padding.
+
+#     Returns
+#     -------
+#     x : ndtensor
+#         Padded expanding path.
+#     """
+#     # Check whether x_contract is tensor or shape.
+#     if type(x_contract) == type(x):
+#         x_contract = x_contract.size()
+
+#     # Calculate necessary padding to retain patch size.
+#     pad_y = x_contract[2] - x.size()[2]
+#     pad_x = x_contract[3] - x.size()[3]
+
+#     if padding_style == 'zeros':
+#         padding_style = 'constant'
+
+#     x = torch.nn.functional.pad(x, [pad_x // 2, pad_x - pad_x // 2, pad_y // 2, pad_y - pad_y // 2], mode=padding_style)
+
+#     return x
+
+############################################################
 
 class FeatureMap(torch.nn.Module):
     """Class to perform final 1D convolution before calculating cross entropy or using softmax."""
@@ -133,15 +212,15 @@ class TransformerUNet(nn.Module):
         self.channels = channels
         self.pos_encoding = PositionalEncoding(options=options)
         self.encode = nn.ModuleList(
-            [EncoderLayer(channels[i], channels[i + 1], is_residual, bias) for i in
+            [EncoderLayer(options, channels[i], channels[i + 1], is_residual, bias) for i in
              range(len(channels) - 2)])
-        self.bottle_neck = ConvBlock(channels[-2], channels[-1], is_residual, bias)
+        self.bottle_neck = ConvBlock(options, channels[-2], channels[-1], is_residual, bias)
         self.mhsa = MultiHeadSelfAttention(channels[-1], num_heads, bias)
         self.mhca = nn.ModuleList(
             [MultiHeadCrossAttention(channels[i], num_heads, channels[i], channels[i + 1], bias) for
              i in reversed(range(1, len(channels) - 1))])
         self.decode = nn.ModuleList(
-            [DecoderLayer(channels[i + 1], channels[i], is_residual, bias) for i in
+            [DecoderLayer(options, channels[i + 1], channels[i], is_residual, bias) for i in
              reversed(range(1, len(channels) - 1))])
         # TODO: Change here to AI4EO output function
         # self.output = nn.Conv2d(channels[1], 1, 1) # Classifies only one class
@@ -192,13 +271,40 @@ class MultiHeadSelfAttention(nn.Module):
     def __init__(self, embed_dim: int, num_heads: int, bias=False) -> None:
         super(MultiHeadSelfAttention, self).__init__()
 
-        self.mha = nn.MultiheadAttention(embed_dim, num_heads, bias=bias, batch_first=True)
+        self.mha = nn.MultiheadAttention(embed_dim, num_heads, bias=True, batch_first=True, device='cpu')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        b, c, h, w = x.size()
-        x = x.permute(0, 2, 3, 1).view((b, h * w, c))
-        x, _ = self.mha(x, x, x, need_weights=False)
-        return x.view((b, h, w, c)).permute(0, 3, 1, 2)
+        if self.training:
+            b, c, h, w = x.size()
+            x = x.permute(0, 2, 3, 1).view((b, h * w, c))
+            print(self.training)
+            x, _ = self.mha(x, x, x, need_weights=False)
+            return x.view((b, h, w, c)).permute(0, 3, 1, 2)
+        else:
+            print("Size:", x.shape)
+            b, c, h, w = x.size()
+            x = x.permute(0, 2, 3, 1).view((b, h * w, c)).detach().cpu()
+            print(self.training)
+            x, _ = self.mha(x, x, x, need_weights=False)
+            return x.view((b, h, w, c)).permute(0, 3, 1, 2)
+            # print("Size eval:", x.size)
+            # # b, h, c = x.size()
+            # x = x.permute(0, 2, 1)
+            # x, _ = self.mha(x, x, x, need_weights=False)
+            # return x.permute(0, 2, 1)
+
+
+# class MultiHeadSelfAttentionEval(nn.Module):
+#     def __init__(self, embed_dim: int, num_heads: int, bias=False) -> None:
+#         super(MultiHeadSelfAttention, self).__init__()
+
+#         self.mha = nn.MultiheadAttention(embed_dim, num_heads, bias=bias, batch_first=True)
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         b, h, c = x.size()
+#         x = x.permute(0, 2, 1)
+#         x, _ = self.mha(x, x, x, need_weights=False)
+#         return x.permute(0, 2, 1)
 
 
 class MultiHeadCrossAttention(nn.Module):
