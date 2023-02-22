@@ -32,6 +32,8 @@ To connect to the `github` repository on the `EOxHub` it is necessary to run the
 4. `Pizza Quattro Formaggi` - 8-lvl u-net with transfer learning from `Pizza Marinara`, regression loss, diagnostics output and reweighting sampler: `75 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32]`
 5. `Pizza Quattro Stagioni` - 6-lvl u-net with transfer learning from `Pizza Marinara` (half the learning rate), regression loss, diagnostics output and reweighting sampler: `40 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32]`
    * simplified version of `Pizza Quattro Formaggi`
+6. `Pizza Tre Stagioni` - 6-lvl u-net with transfer learning from `Pizza Marinara` (half the learning rate), classification loss, diagnostics output and reweighting sampler: `40 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32]`
+   * see the effect of classification vs regression loss
 
 ## Problems
 
