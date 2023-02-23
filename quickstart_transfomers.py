@@ -25,6 +25,7 @@ from utils import CHARTS, SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP, SCENE_VARIABLES, 
 # -- Environmental variables -- #
 os.environ['AI4ARCTIC_DATA'] = 'data'  # Fill in directory for data location.
 os.environ['AI4ARCTIC_ENV'] = ''  # Fill in
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb=64000'
 
 train_options = {
     # -- Training options -- #
@@ -32,7 +33,7 @@ train_options = {
     'lr': 0.0001,  # Optimizer learning rate.
     'epochs': 2,  # Number of epochs before training stop.
     'epoch_len': 2,  # Number of batches for each epoch.
-    'patch_size': 256,  # Size of patches sampled. Used for both Width and Height.
+    'patch_size': 24,  # Size of patches sampled. Used for both Width and Height. 256 for the ready-to-train AI4Arctic Challenge dataset.
     'batch_size': 4,  # Number of patches for each batch.
     'loader_upsampling': 'nearest',  # How to upscale low resolution variables to high resolution.
 
@@ -71,8 +72,8 @@ train_options = {
 
     # -- GPU/cuda options -- #
     'gpu_id': 0,  # Index of GPU. In case of multiple GPUs.
-    'num_workers': 20,  # Number of parallel processes to fetch data.
-    'num_workers_val': 10,  # Number of parallel processes during validation.
+    'num_workers': 12,  # Number of parallel processes to fetch data.
+    'num_workers_val': 12,  # Number of parallel processes during validation.
 
     # -- U-Net Options -- #
     'unet_conv_filters': [24, 16, 32, 64],  # Number of filters in the U-Net.
@@ -214,6 +215,7 @@ with mlflow.start_run() as run:
 
         net.eval()  # Set network to evaluation mode.
         # - Loops though scenes in queue.
+        print('Starting validation loop.')
         for inf_x, inf_y, masks, name in dataloader_val:
             torch.cuda.empty_cache()
 
