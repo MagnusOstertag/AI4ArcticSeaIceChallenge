@@ -29,9 +29,9 @@ train_options = {
     'path_to_env': '',  # Replace with environmment directory path.
     'lr': 0.0001,  # Optimizer learning rate.
     'epochs': 1,  # Number of epochs before training stop.
-    'epoch_len': 500,  # Number of batches for each epoch.
+    'epoch_len': 2,  # Number of batches for each epoch.
     'patch_size': 256,  # Size of patches sampled. Used for both Width and Height.
-    'batch_size': 8,  # Number of patches for each batch.
+    'batch_size': 1,  # Number of patches for each batch.
     'loader_upsampling': 'nearest',  # How to upscale low resolution variables to high resolution.
     
     # -- Data prepraration lookups and metrics.
@@ -75,7 +75,7 @@ train_options = {
     # -- U-Net Options -- # now 3 lvls as in the paper
     # DIFF:
     # 1. run: 'unet_conv_filters': [16, 32, 32, 3],
-    'unet_conv_filters': [8, 16, 16, 16],     # Number of filters in the U-Net.
+    'unet_conv_filters': [24, 16, 32, 64],     # Number of filters in the U-Net.
     'conv_kernel_size': (3, 3),  # Size of convolutional kernels.
     'conv_stride_rate': (1, 1),  # Stride rate of convolutional kernels.
     'conv_dilation_rate': (1, 1),  # Dilation rate of convolutional kernels.
@@ -88,7 +88,7 @@ get_variable_options = get_variable_options(train_options)
 # %store train_options  
 
 # Load training list.
-with open(train_options['path_to_env'] + 'datalists/dataset.json') as file:
+with open(train_options['path_to_env'] + 'datalists/dataset_prep.json') as file:
     train_options['train_list'] = json.loads(file.read())
 # Convert the original scene names to the preprocessed names.
 train_options['train_list'] = [file[17:32] + '_' + file[77:80] + '_prep.nc' for file in train_options['train_list']]
@@ -120,9 +120,8 @@ print('GPU and data setup complete.')
 
 # Example Model
 
-from unet_attention import UNetAttention
 # Setup U-Net model, adam optimizer, loss function and dataloader.
-net = UNetAttention(options=train_options).to(device)
+net = UNet(options=train_options).to(device)
 optimizer = torch.optim.Adam(list(net.parameters()), lr=train_options['lr'])
 torch.backends.cudnn.benchmark = True  # Selects the kernel with the best performance for the GPU and given input size.
 
@@ -146,14 +145,14 @@ for epoch in tqdm(iterable=range(train_options['epochs']), position=0):
 
     # Loops though batches in queue.
     for i, (batch_x, batch_y) in enumerate(tqdm(iterable=dataloader, total=train_options['epoch_len'], colour='red', position=0)):
-        # print("batch", i)
+        print("batch", i)
         torch.cuda.empty_cache()  # Empties the GPU cache freeing up memory.
-        # print("cache emptied")
+        print("cache emptied")
         loss_batch = 0  # Reset from previous batch.
-        # print("loss batch reset")
+        print("loss batch reset")
         # - Transfer to device.
         batch_x = batch_x.to(device, non_blocking=True)
-        # print("batch x to device")
+        print("batch x to device")
         # - Mixed precision training. (Saving memory)
         with torch.cuda.amp.autocast():
             # - Forward pass. 
