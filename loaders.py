@@ -13,6 +13,7 @@ __date__ = '2022-10-17'
 
 # -- Built-in modules -- #
 import os
+import gc
 
 # -- Third-party modules -- #
 import copy
@@ -403,6 +404,8 @@ class AI4ArcticChallengeTestDataset(Dataset):
         scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[idx]))
 
         x, y = self.prep_scene(scene)
+        del scene
+        gc.collect()
         name = self.files[idx]
         
         if not self.test:
@@ -413,6 +416,9 @@ class AI4ArcticChallengeTestDataset(Dataset):
         else:
             masks = (x.squeeze()[0, :, :] == self.options['train_fill_value']).squeeze()
 
+        # if self.options['val_batch_size'] is not None:
+        #     x = x.squeeze()
+        gc.collect()
         return x, y, masks, name
 
 

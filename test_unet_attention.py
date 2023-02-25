@@ -15,6 +15,7 @@ import torch
 import xarray as xr
 from tqdm import tqdm  # Progress bar
 import mlflow
+import json
 # import mlflow.pytorch
 
 # --Proprietary modules -- #
@@ -24,6 +25,8 @@ from unet import UNet  # Convolutional Neural Network model
 from utils import CHARTS, SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP, SCENE_VARIABLES, colour_str
 
 train_options = {
+    'model_name': 'unet_attention',
+    'model_version': 'version_1024',
     # -- Training options -- #
     'path_to_processed_data': os.environ['AI4ARCTIC_DATA'],  # Replace with data directory path.
     'path_to_env': '',  # Replace with environmment directory path.
@@ -32,6 +35,7 @@ train_options = {
     'epoch_len': 500,  # Number of batches for each epoch.
     'patch_size': 256,  # Size of patches sampled. Used for both Width and Height.
     'batch_size': 8,  # Number of patches for each batch.
+    'val_batch_size': 1,  # Number of patches for each validation batch.
     'loader_upsampling': 'nearest',  # How to upscale low resolution variables to high resolution.
     
     # -- Data prepraration lookups and metrics.
@@ -69,13 +73,13 @@ train_options = {
     
     # -- GPU/cuda options -- #
     'gpu_id': 0,  # Index of GPU. In case of multiple GPUs.
-    'num_workers': 1,  # Number of parallel processes to fetch data.
-    'num_workers_val': 1,  # Number of parallel processes during validation.
-    
+    'num_workers': 12,  # Number of parallel processes to fetch data.
+    'num_workers_val': 0,  # Number of parallel processes during validation.
+    # Num worker val needs to be 0, __getitem__ is not thread safe.
     # -- U-Net Options -- # now 3 lvls as in the paper
     # DIFF:
     # 1. run: 'unet_conv_filters': [16, 32, 32, 3],
-    'unet_conv_filters': [8, 16, 16, 16],     # Number of filters in the U-Net.
+    'unet_conv_filters': [8, 16, 32, 64, 128, 256, 512, 1024],     # Number of filters in the U-Net.
     'conv_kernel_size': (3, 3),  # Size of convolutional kernels.
     'conv_stride_rate': (1, 1),  # Stride rate of convolutional kernels.
     'conv_dilation_rate': (1, 1),  # Dilation rate of convolutional kernels.
@@ -93,7 +97,7 @@ with open(train_options['path_to_env'] + 'datalists/dataset.json') as file:
 # Convert the original scene names to the preprocessed names.
 train_options['train_list'] = [file[17:32] + '_' + file[77:80] + '_prep.nc' for file in train_options['train_list']]
 # Select a random number of validation scenes with the same seed. Feel free to change the seed.et
-np.random.seed(0)
+np.random.seed(2)
 train_options['validate_list'] = np.random.choice(np.array(train_options['train_list']), size=train_options['num_val_scenes'], replace=False)
 # Remove the validation scenes from the train list.
 train_options['train_list'] = [scene for scene in train_options['train_list'] if scene not in train_options['validate_list']]
@@ -131,7 +135,9 @@ torch.backends.cudnn.benchmark = True  # Selects the kernel with the best perfor
 # It is equivalent to multiplying the loss of the relevant masked pixel with 0.
 loss_functions = {chart: torch.nn.CrossEntropyLoss(ignore_index=train_options['class_fill_values'][chart]) \
                                                    for chart in train_options['charts']}
-print('Model setup complete')
+print('Model',train_options['model_name'],'setup complete.')
+print('Model version',train_options['model_version'],'initialised.')
+
 
 best_combined_score = 0  # Best weighted model score.
 # early_stopper = EarlyStopper(patience = 4, min_delta=0.3)
@@ -178,7 +184,7 @@ for epoch in tqdm(iterable=range(train_options['epochs']), position=0):
 
         # - Average loss for displaying
         loss_epoch = torch.true_divide(loss_sum, i + 1).detach().item()
-        print('\rMean training loss: ' + f'{loss_epoch:.3f}', end='\r')
+        # print('\rMean training loss: ' + f'{loss_epoch:.3f}', end='\r')
         # mlflow.log_metric(key="mean_loss", value=loss_epoch)
         del output, batch_x, batch_y # Free memory.
     del loss_sum
@@ -189,11 +195,23 @@ for epoch in tqdm(iterable=range(train_options['epochs']), position=0):
     # - Stores the output and the reference pixels to calculate the scores after inference on all the scenes.
     outputs_flat = {chart: np.array([]) for chart in train_options['charts']}
     inf_ys_flat = {chart: np.array([]) for chart in train_options['charts']}
-
+    
+    # Print model
+    
+    if not os.path.exists('models/'+train_options['model_name']+'/'+train_options['model_version']):
+            os.makedirs('models/'+train_options['model_name']+'/'+train_options['model_version'])
+    else:
+        print('Model version already exists. Overwriting.')
+    with open('models/'+train_options['model_name']+'/'+train_options['model_version']+'/train_options.txt', 'w') as file:
+     print(train_options, file=file)
+    
     net.eval()  # Set network to evaluation mode.
+    # gc.collect()  # Collect garbage to free memory.
+    
     # - Loops though scenes in queue.
     for inf_x, inf_y, masks, name in tqdm(iterable=dataloader_val, total=len(train_options['validate_list']), colour='green', position=0):
         torch.cuda.empty_cache()
+        # gc.collect()
 
         # - Ensures that no gradients are calculated, which otherwise take up a lot of space on the GPU.
         with torch.no_grad(), torch.cuda.amp.autocast():
@@ -205,8 +223,12 @@ for epoch in tqdm(iterable=range(train_options['epochs']), position=0):
             output[chart] = torch.argmax(output[chart], dim=1).squeeze().cpu().numpy()
             outputs_flat[chart] = np.append(outputs_flat[chart], output[chart][~masks[chart]])
             inf_ys_flat[chart] = np.append(inf_ys_flat[chart], inf_y[chart][~masks[chart]].numpy())
-
+        
+        # torch.cuda.empty_cache()
+        
         del inf_x, inf_y, masks, output  # Free memory.
+        # torch.cuda.empty_cache()
+        # gc.collect()
 
     # - Compute the relevant scores.
     combined_score, scores = compute_metrics(true=inf_ys_flat, pred=outputs_flat, charts=train_options['charts'],
@@ -225,11 +247,16 @@ for epoch in tqdm(iterable=range(train_options['epochs']), position=0):
     # If the scores is better than the previous epoch, then save the model and rename the image to best_validation.
     if combined_score > best_combined_score:
         best_combined_score = combined_score
+        # Check if the directory exists, if not create it.
+        
         torch.save(obj={'model_state_dict': net.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
                         'epoch': epoch},
-                        f='best_model')
+                        f='models/'+train_options['model_name']+'/'+train_options['model_version']+'/best_model.pt')
     # elif early_stopper(combined_score, best_combined_score):
     #     break
         
     del inf_ys_flat, outputs_flat  # Free memory.
+
+# Run it headless
+# nohup /home/leonie/anani/AI4ArcticSeaIceChallenge/venv/bin/python /home/leonie/anani/AI4ArcticSeaIceChallenge/test_unet_attention.py > /home/leonie/anani/AI4ArcticSeaIceChallenge/logs/test_unet_attention.log &
