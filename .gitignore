@@ -5,6 +5,9 @@ best_model
 
 # data
 data/
+3
+mlflow.db
+sqlite
 
 # for now the runs, mlruns, metadata are locally not tracked
 metadata_runs/
