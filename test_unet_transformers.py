@@ -3,10 +3,6 @@ import gc
 import os
 import sys
 
-# -- Environmental variables -- #
-os.environ['AI4ARCTIC_DATA'] = 'data'  # Fill in directory for data location.
-#os.environ['AI4ARCTIC_ENV'] = ''  # Fill in directory for environment with Ai4Arctic get-started package. 
-
 # -- Third-part modules -- #
 import json
 import matplotlib.pyplot as plt
@@ -24,17 +20,31 @@ from loaders import AI4ArcticChallengeDataset, AI4ArcticChallengeTestDataset, ge
 from unet import UNet  # Convolutional Neural Network model
 from utils import CHARTS, SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP, SCENE_VARIABLES, colour_str
 
-# --Set seed for reproducibility -- #
+
+# -- Environmental variables -- #
+local_computation = True
+
+if local_computation:
+    os.environ['AI4ARCTIC_DATA'] = 'data'  # Fill in directory for data location.
+    #os.environ['AI4ARCTIC_ENV'] = ''  # Fill in directory for environment with Ai4Arctic get-started package. 
 
 
 train_options = {
+    # -- General options -- #
     'model_name': 'unet_transformers',
     'model_version': 'version_32_0',
+    'model_codename': 'pizza_some',
     'test_call': False,
     'eval': True,
     'mlflow': True,
     'reproducable': False,
+
+    # -- Model options -- #
+    'model_architecture': 'unet_atention',
+    'optimizer': 'adam',
+
     # -- Training options -- #
+    'early_stopping': True,
     'path_to_processed_data': os.environ['AI4ARCTIC_DATA'],  # Replace with data directory path.
     'path_to_env': '',  # Replace with environmment directory path.
     'lr': 0.0001,  # Optimizer learning rate.
@@ -42,9 +52,9 @@ train_options = {
     'epoch_len': 500,  # Number of batches for each epoch.
     'patch_size': 128,  # Size of patches sampled. Used for both Width and Height.
     'batch_size': 4,  # Number of patches for each batch.
-    # 'val_batch_size': 1,  # Number of patches for each validation batch.
     'val_patch_size': 200,  # Size of patches sampled for validation. Used for both Width and Height.
     'loader_upsampling': 'nearest',  # How to upscale low resolution variables to high resolution.
+    'loss_sic': 'classification', # Loss function for SIC. 'classification' or 'regression'.
     
     # -- Data prepraration lookups and metrics.
     'train_variables': SCENE_VARIABLES,  # Contains the relevant variables in the scenes.
@@ -61,7 +71,16 @@ train_options = {
         'SOD': SOD_LOOKUP['mask'],
         'FLOE': FLOE_LOOKUP['mask'],
     },
-    
+
+    # -- Data augmentation options -- #
+
+    # -- Metadata options -- #
+    'get_metadata': True,  # Flag used in the dataloaders to get metadata.
+    'resampling': True,  # Whether to resample the training data. Otherwise, the scene is randomly sampled.
+    'path_to_data': 'misc/',  # Path to the data directory.
+    'visualize_distribution': True,  # Whether to visualize the difference in distribution between the training, validation and test data.
+    # 'difficult_locations':['CentralEast', 'NorthAndCentralEast',],  #  'CentralWest', 'SGRDIEA', 'SGRDIMID', 'SGRDIHA'],  # Locations to oversample as they are more difficult to learn.
+
     # -- Validation options -- #
     'chart_metric': {  # Metric functions for each ice parameter and the associated weight.
         'SIC': {
@@ -78,16 +97,17 @@ train_options = {
         },
     },
     'num_val_scenes': 20,  # Number of scenes randomly sampled from train_list to use in validation.
-    
+    'validation_seed': 0,  # Seed used to sample validation scenes.
+    'dataloader_seed': 0,  # Seed used to sample patches from the scenes.
+
     # -- GPU/cuda options -- #
     'gpu_id': 0,  # Index of GPU. In case of multiple GPUs.
     'num_workers': 12,  # Number of parallel processes to fetch data.
     'num_workers_val': 0,  # Number of parallel processes during validation.
     # Num worker val needs to be 0, __getitem__ is not thread safe.
-    # -- U-Net Options -- # now 3 lvls as in the paper
-    # DIFF:
-    # 1. run: 'unet_conv_filters': [16, 32, 32, 3],
-    # For Transfoemrs, first filter must correspond to number of classes
+
+    # -- U-Net Options -- # 
+    # ! For Transfoemrs, first filter must correspond to number of classes ! #
     'unet_conv_filters': [24, 8, 16, 32],     # Number of filters in the U-Net.
     'conv_kernel_size': (3, 3),  # Size of convolutional kernels.
     'conv_stride_rate': (1, 1),  # Stride rate of convolutional kernels.
@@ -99,110 +119,159 @@ train_options = {
     'is_residual': True,
     'num_heads': 2,
     'bias': False,
-    'dtype': torch.float32
+    'dtype': torch.float32,
+
+    # -- Transfer learning options -- #
+    'transfer_learning': True, # TOCHANGE # Whether to use transfer learning.
+    'transfer_model_architecture': {'unet_conv_filters': [16, 32, 32, 32],}, # Dict of the differences in the U-Net options of the model architecture.
+    'transfer_model_path': 'archive/pizza_marinara',  # Path to the model to transfer from.
 }
 
+# -- Test call -- #
 if train_options['test_call']:
     train_options['epochs'] = 1
     train_options['epoch_len'] = 10
     
-if train_options['reproducable']:
+# --Set seed for reproducibility -- #
+np.random.seed(train_options['validation_seed']) # Seed used to sample validation scenes.
+
+if train_options['reproducable']: # Set seed for reproducibility in dataloader and model.
     torch.manual_seed(42)
-    np.random.seed(42)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     dataloader_shuffle = False
 else:
     dataloader_shuffle = True
     
-    
 # Get options for variables, amsrenv grid, cropping and upsampling.
 get_variable_options = get_variable_options(train_options)
-# To be used in test_upload.
-# %store train_options  
 
+
+# -- Initialize data -- #
 # Load training list.
 with open(train_options['path_to_env'] + 'datalists/dataset.json') as file:
     train_options['train_list'] = json.loads(file.read())
-    
 # Convert the original scene names to the preprocessed names.
 train_options['train_list'] = [file[17:32] + '_' + file[77:80] + '_prep.nc' for file in train_options['train_list']]
-
 # Select a random number of validation scenes with the same seed. Feel free to change the seed.et
 train_options['validate_list'] = np.random.choice(np.array(train_options['train_list']), size=train_options['num_val_scenes'], replace=False)
 print('Validation scenes:', train_options['validate_list'])
-
 # Remove the validation scenes from the train list.
 train_options['train_list'] = [scene for scene in train_options['train_list'] if scene not in train_options['validate_list']]
 print('Options initialised')
 
-# Get GPU resources.
-if torch.cuda.is_available():
+
+# -- Initialize GPU -- # 
+if torch.cuda.is_available(): # Cuda
     print(colour_str('GPU available!', 'green'))
     print('Total number of available devices: ', colour_str(torch.cuda.device_count(), 'orange'))
     device = torch.device(f"cuda:{train_options['gpu_id']}")
-    
-elif torch.backends.mps.is_available():
+
+elif torch.backends.mps.is_available(): # Metal MacOS Silicon
     print(colour_str('M1 GPU available!.', 'green'))
-    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0' 
+    os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0' # Set high watermark to 0 to avoid memory issues.
     
-else:
+else: # CPU
     print(colour_str('GPU not available.', 'red'))
     device = torch.device('cpu')
     
-train_options['device'] = device
+train_options['device'] = device # Add device to train options.
 
-# Custom dataset and dataloader.
+# -- Initialize dataset and dataloader -- #
+# Training.
 dataset = AI4ArcticChallengeDataset(files=train_options['train_list'], options=train_options)
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=None, shuffle=dataloader_shuffle, num_workers=train_options['num_workers'], pin_memory=True, )
-# - Setup of the validation dataset/dataloader. The same is used for model testing in 'test_upload.ipynb'.
+
+# Validation.
 dataset_val = AI4ArcticChallengeTestDataset(options=train_options, files=train_options['validate_list'])
 dataloader_val = torch.utils.data.DataLoader(dataset_val, batch_size=None, num_workers=train_options['num_workers_val'], shuffle=False)
 
 print('GPU and data setup complete.')
 
-# Example Model
 
-from unet_transfomers import TransformerUNet
-# Setup U-Net model, adam optimizer, loss function and dataloader.
-net = TransformerUNet(options=train_options).to(device)
-optimizer = torch.optim.Adam(list(net.parameters()), lr=train_options['lr'])
+# -- Initialize model --
+if train_options['model_architecture'] == 'unet':
+    from unet import UNet
+    net = UNet(options=train_options).to(device)
+elif train_options['model_architecture'] == 'unet_transformers':
+    from unet_transfomers import TransformerUNet
+    net = TransformerUNet(options=train_options).to(device)
+elif train_options['model_architecture'] == 'unet_attention':
+    from unet_attention import AttentionUNet
+    net = AttentionUNet(options=train_options).to(device)
+elif train_options['model_architecture'] == 'unet_improvements':
+    from unet_improvements import ImprovementsUNet
+    net = ImprovementsUNet(options=train_options).to(device)
+elif train_options['model_architecture'] == 'unet_transfer':
+    from unet_transfer import TransferUNet
+    net = TransferUNet(options=train_options).to(device)
+
+# -- Initialize optimizer -- #
+if train_options['optimizer'] == 'adam':
+    optimizer = torch.optim.Adam(list(net.parameters()), lr=train_options['lr'])
 torch.backends.cudnn.benchmark = True  # Selects the kernel with the best performance for the GPU and given input size.
 
+# -- Initialize loss functions -- #
 # Loss functions to use for each sea ice parameter.
 # The ignore_index argument discounts the masked values, ensuring that the model is not using these pixels to train on.
 # It is equivalent to multiplying the loss of the relevant masked pixel with 0.
 loss_functions = {chart: torch.nn.CrossEntropyLoss(ignore_index=train_options['class_fill_values'][chart]) \
                                                    for chart in train_options['charts']}
+
+# -- Initialize metrics -- #
+if train_options['get_metadata']:
+    import pandas as pd
+    metadata = pd.DataFrame(columns=['sentinel_mission_identifier',
+                                    'image_acquisition_start_date',
+                                    'image_acquisition_start_date_year', 'image_acquisition_start_date_month', 'image_acquisition_start_date_hour',
+                                    'row_rand', 'col_rand', 'sample_n',
+                                    'icechart_provider', 'location',
+                                    'epoch_no', 'type', 'score_combined',
+                                    'loss_SIC', 'loss_SOD', 'loss_FLOE', 'loss_combined',
+                                    'score_SIC', 'ice_characteristcs_SIC',
+                                    'score_SOD', 'ice_characteristcs_SOD',
+                                    'score_FLOE', 'ice_characteristcs_FLOE',])
+    metadata_path = os.path.join(train_options['path_to_env'], f"metadata_runs/{train_options['model_codename']}_metadata.csv")
+    metadata.to_csv(metadata_path, index=False)
+
+
+# -- Print -- #
 print('Model',train_options['model_name'],'setup complete.')
 print('Model version',train_options['model_version'],'initialised.')
 
+
 # -- MLFlow -- #
+if not local_computation:
+    ## setting up the sqlite database for tracking of experiments in MLflow
+    mlflow.set_tracking_uri('sqlite:///' + os.path.expanduser(os.environ["MLFLOW_BACKEND_STORE_PATH"]))
+    os.path.expanduser(os.environ["MLFLOW_BACKEND_STORE_PATH"])
+
 experiment = mlflow.set_experiment(train_options['model_name'] + '_' + train_options['model_version'])
 experiment.experiment_id
 
 
+# -- Training -- #
 best_combined_score = 0  # Best weighted model score.
-# early_stopper = EarlyStopper(patience = 4, min_delta=0.3)
 
-with mlflow.start_run() as run:
-    mlflow.log_params(train_options['chart_metric'])
-    # -- Training Loop -- #
-    for epoch in tqdm(iterable=range(train_options['epochs']), position=0):
+if train_options['early_stopping']:
+    from utils.early_stopper import EarlyStopper
+    early_stopper = EarlyStopper(patience = 4, min_delta=0.3)
+
+with mlflow.start_run() as run: # Start MLFlow run.
+    mlflow.log_params(train_options['chart_metric']) # Log the chart metric.
+    for epoch in tqdm(iterable=range(train_options['epochs']), position=0): # Loops through epochs.
         gc.collect()  # Collect garbage to free memory.
         loss_sum = torch.tensor([0.])  # To sum the batch losses during the epoch.
         net.train()  # Set network to evaluation mode.
 
         # Loops though batches in queue.
         for i, (batch_x, batch_y) in enumerate(tqdm(iterable=dataloader, total=train_options['epoch_len'], colour='red', position=0)):
-            # print("batch", i)
             torch.cuda.empty_cache()  # Empties the GPU cache freeing up memory.
-            # print("cache emptied")
             loss_batch = 0  # Reset from previous batch.
-            # print("loss batch reset")
+
             # - Transfer to device.
             batch_x = batch_x.to(device, non_blocking=True)
-            # print("batch x to device")
+
             # - Mixed precision training. (Saving memory)
             with torch.cuda.amp.autocast():
                 # - Forward pass. 
@@ -231,27 +300,9 @@ with mlflow.start_run() as run:
             loss_epoch = torch.true_divide(loss_sum, i + 1).detach().item()
             # print('\rMean training loss: ' + f'{loss_epoch:.3f}', end='\r')
             mlflow.log_metric(key="mean_loss", value=loss_epoch)
-            
-            # Print accuracy
-            # print metrics
-            # output_single_patch = {chart: output_single_patch_temp[chart][~mask_single_patch] for chart in train_options['charts']}
 
-            # batch_y_single_patch = {chart: batch_y[chart][j][~mask_single_patch].cpu().numpy() for chart in train_options['charts']}
-            
-            
-            
-            # combined_score, scores = compute_metrics(pred=output_single_patch, true=batch_y_single_patch, charts=train_options['charts'],
-            #                                                 metrics=train_options['chart_metric'])
-            # for chart in train_options['charts']:
-            #     # because the index should be the same as the sample_n
-            #     mlflow.log_metric(key=str(i)+" chart_loss "+str(chart), value=loss_batch)
-            #     mlflow.log_metric(key=str(i)+" chart_loss "+str(chart), value=loss_batch)
-            #     mlflow.log_metric(key=str(i)+" combinedscore "+str(chart), value=combined_score)
-            #     # metadata_batch.loc[(j, 'score_' + chart)] = scores[chart]
-            #     # metadata_batch.loc[(j, 'ice_characteristcs_' + chart)] = float(torch.median(batch_y[chart]))
-            #     # metadata_batch.loc[(j, 'score_combined')] = combined_score
-
-            del output, batch_x, batch_y # Free memory.
+            # - Free memory.
+            del output, batch_x, batch_y 
         del loss_sum
 
         # -- Validation Loop -- #
@@ -261,18 +312,14 @@ with mlflow.start_run() as run:
         outputs_flat = {chart: np.array([]) for chart in train_options['charts']}
         inf_ys_flat = {chart: np.array([]) for chart in train_options['charts']}
         
-        # Print model
-        
+        # -- Store training options -- #         
         if not os.path.exists('models/'+train_options['model_name']+'/'+train_options['model_version']):
                 os.makedirs('models/'+train_options['model_name']+'/'+train_options['model_version'])
         else:
             print('Model version already exists. Overwriting.')
-        with open('models/'+train_options['model_name']+'/'+train_options['model_version']+'/train_options.txt', 'w') as file:
-            print(train_options, file=file)
-            
+        
         pickle.dump(obj=train_options, file=open('models/'+train_options['model_name']+'/'+train_options['model_version']+'/train_options.pkl', 'wb'))
             
-        
         
         net.eval()  # Set network to evaluation mode.
         # gc.collect()  # Collect garbage to free memory.
@@ -280,7 +327,7 @@ with mlflow.start_run() as run:
         # - Loops though scenes in queue.
         for inf_x, inf_y, masks, name in tqdm(iterable=dataloader_val, total=len(train_options['validate_list']), colour='green', position=0):
             torch.cuda.empty_cache()
-            # gc.collect()
+            gc.collect()
 
             loss_val_chart = 0  # Reset from previous batch.
             # - Ensures that no gradients are calculated, which otherwise take up a lot of space on the GPU.
