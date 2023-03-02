@@ -1,27 +1,10 @@
 # AI4ArcticSeaIceChallenge
 
-Following packages and versions were used to develop and test the code along with the dependancies installed with pip:
-- python==3.9.11
-- jupyterlab==3.4.5
-- xarray==2022.10.0
-- netCDF4==1.6.1
-- numpy==1.23.2
-- matplotlib==3.6.1
-- torch==1.12.1+cu116
-- tqdm==4.64.1
-- sklearn==0.0
-- ipywidgets==8.0.2
+With `pip` the required python packages can be installed with `requirements.txt`.
 
-In the `venv` the above are installed, for the parameters:
+In the `.env` the above are installed, for the parameters:
 - `AI4ARCTIC_ENV` = '.'
-- use the global path for `AI4ARCTIC_DATA`
-
-See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to our quickstart script.
-
-To connect to the `github` repository on the `EOxHub` it is necessary to run the following two commands every time a new session is started:
-
-- `eval "$(ssh-agent -s)"`
-- `ssh-add ~/.ssh/id_ed25519_autoice`
+- set and use the global path for `AI4ARCTIC_DATA`
 
 ## Runs
 
@@ -32,13 +15,22 @@ To connect to the `github` repository on the `EOxHub` it is necessary to run the
 4. `Pizza Quattro Formaggi` - 8-lvl u-net with transfer learning from `Pizza Marinara`, regression loss, diagnostics output and reweighting sampler: `75 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32, 32, 32]`
 5. `Pizza Quattro Stagioni` - 6-lvl u-net with transfer learning from `Pizza Marinara` (half the learning rate), regression loss, diagnostics output and reweighting sampler: `40 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32]`
    * simplified version of `Pizza Quattro Formaggi`
-6. `Pizza Tre Stagioni` - 6-lvl u-net with transfer learning from `Pizza Marinara` (half the learning rate), classification loss, diagnostics output and reweighting sampler: `40 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32]`
+6. TODO: `Pizza Tre Stagioni` - 6-lvl u-net with transfer learning from `Pizza Marinara` (half the learning rate), classification loss, diagnostics output and reweighting sampler: `40 epochs`, `'unet_conv_filters': [16, 32, 32, 32, 32, 32]`
    * see the effect of classification vs regression loss
+
+## Cluster
+
+See the launcher for the `quickstart mlflow`. I have added the `mlflow` code to our quickstart script.
+
+To connect to the `github` repository on the `EOxHub` it is necessary to run the following two commands every time a new session is started:
+
+- `eval "$(ssh-agent -s)"`
+- `ssh-add ~/.ssh/id_ed25519_autoice`
 
 ## Problems
 
 - test upload would not run because the kernel dies. You have to comment out the plotting code as there is a strange memory leak in matplotlib `cbook`.
-- mlflow error `OperationError`
+- mlflow error `OperationError`, maybe if two browsers access the cluster
 - the shape of the output is super strange: `(batch_size, 12, patch_size, patch_size)`
 
 ## Ideas
@@ -50,15 +42,9 @@ To connect to the `github` repository on the `EOxHub` it is necessary to run the
 - understand under which conditions the predictions are the worst
 - upload error per condition as an artifact
 - based on the different train and test distributions, featureize and resample
-
-### TODO
-
-@Toni
-- extend the architecture: attention u-net? / residual connections / inception u-net
-- include the additional information such as ice chart provider, location/difficult location and month
-- play with the learning rate (!) (cooling), number of epochs/early stopping, patch_size, 
+- attention u-net, multi-head attention
 
 ### Timetable
 
--> 22.02.: all ToDos done, most training done, mail @Lombardi
-approx. 28.02.: presentation
+* -> 22.02.: all ToDos done, most training done, mail @Lombardi
+* approx. 28.02.: presentation
