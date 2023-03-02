@@ -28,8 +28,8 @@ from utils import CHARTS, SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP, SCENE_VARIABLES, 
 
 
 train_options = {
-    'model_name': 'unet_attention',
-    'model_version': 'version_64_512',
+    'model_name': 'unet_transformers',
+    'model_version': 'version_32_0',
     'test_call': False,
     'eval': True,
     'mlflow': True,
@@ -40,10 +40,10 @@ train_options = {
     'lr': 0.0001,  # Optimizer learning rate.
     'epochs': 20,  # Number of epochs before training stop.
     'epoch_len': 500,  # Number of batches for each epoch.
-    'patch_size': 512,  # Size of patches sampled. Used for both Width and Height.
+    'patch_size': 128,  # Size of patches sampled. Used for both Width and Height.
     'batch_size': 4,  # Number of patches for each batch.
     # 'val_batch_size': 1,  # Number of patches for each validation batch.
-    'val_patch_size': 1000,  # Size of patches sampled for validation. Used for both Width and Height.
+    'val_patch_size': 200,  # Size of patches sampled for validation. Used for both Width and Height.
     'loader_upsampling': 'nearest',  # How to upscale low resolution variables to high resolution.
     
     # -- Data prepraration lookups and metrics.
@@ -87,12 +87,19 @@ train_options = {
     # -- U-Net Options -- # now 3 lvls as in the paper
     # DIFF:
     # 1. run: 'unet_conv_filters': [16, 32, 32, 3],
-    'unet_conv_filters': [8, 16, 32, 64, 64, 64],     # Number of filters in the U-Net.
+    # For Transfoemrs, first filter must correspond to number of classes
+    'unet_conv_filters': [24, 8, 16, 32],     # Number of filters in the U-Net.
     'conv_kernel_size': (3, 3),  # Size of convolutional kernels.
     'conv_stride_rate': (1, 1),  # Stride rate of convolutional kernels.
     'conv_dilation_rate': (1, 1),  # Dilation rate of convolutional kernels.
     'conv_padding': (1, 1),  # Number of padded pixels in convolutional layers.
     'conv_padding_style': 'zeros',  # Style of padding.
+    
+    # --Transformer Options -- #
+    'is_residual': True,
+    'num_heads': 2,
+    'bias': False,
+    'dtype': torch.float32
 }
 
 if train_options['test_call']:
@@ -142,6 +149,8 @@ elif torch.backends.mps.is_available():
 else:
     print(colour_str('GPU not available.', 'red'))
     device = torch.device('cpu')
+    
+train_options['device'] = device
 
 # Custom dataset and dataloader.
 dataset = AI4ArcticChallengeDataset(files=train_options['train_list'], options=train_options)
@@ -154,9 +163,9 @@ print('GPU and data setup complete.')
 
 # Example Model
 
-from unet_attention import UNetAttention
+from unet_transfomers import TransformerUNet
 # Setup U-Net model, adam optimizer, loss function and dataloader.
-net = UNetAttention(options=train_options).to(device)
+net = TransformerUNet(options=train_options).to(device)
 optimizer = torch.optim.Adam(list(net.parameters()), lr=train_options['lr'])
 torch.backends.cudnn.benchmark = True  # Selects the kernel with the best performance for the GPU and given input size.
 

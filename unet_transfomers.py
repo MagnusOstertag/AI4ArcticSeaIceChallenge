@@ -271,20 +271,20 @@ class MultiHeadSelfAttention(nn.Module):
     def __init__(self, embed_dim: int, num_heads: int, bias=False) -> None:
         super(MultiHeadSelfAttention, self).__init__()
 
-        self.mha = nn.MultiheadAttention(embed_dim, num_heads, bias=True, batch_first=True, device='cpu')
+        self.mha = nn.MultiheadAttention(embed_dim, num_heads, bias=True, batch_first=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.training:
             b, c, h, w = x.size()
             x = x.permute(0, 2, 3, 1).view((b, h * w, c))
-            print(self.training)
+            # print(self.training)
             x, _ = self.mha(x, x, x, need_weights=False)
             return x.view((b, h, w, c)).permute(0, 3, 1, 2)
         else:
-            print("Size:", x.shape)
+            # print("Size:", x.shape)
             b, c, h, w = x.size()
-            x = x.permute(0, 2, 3, 1).view((b, h * w, c)).detach().cpu()
-            print(self.training)
+            x = x.permute(0, 2, 3, 1).view((b, h * w, c)).detach()#.cpu()
+            # print(self.training)
             x, _ = self.mha(x, x, x, need_weights=False)
             return x.view((b, h, w, c)).permute(0, 3, 1, 2)
             # print("Size eval:", x.size)
