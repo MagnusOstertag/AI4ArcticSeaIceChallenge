@@ -1,11 +1,11 @@
-jupyterlab==3.4.5
-xarray==2022.10.0
-netCDF4==1.6.1
-numpy==1.23.2
-matplotlib==3.6.1
--f https://download.pytorch.org/whl/cu116/torch_stable.html
-torch==1.12.1+cu116
+einops==0.6.0
+matplotlib==3.6.3
+numpy==1.24.1
+Pillow==9.4.0
+scikit_learn==1.2.1
+torch==2.0.0.dev20230201
+torchsummary==1.5.1
+torchvision==0.15.0.dev20230201
 tqdm==4.64.1
-sklearn==0.0
-ipywidgets==8.0.2
-torchsummary
+xarray==2022.12.0
+
