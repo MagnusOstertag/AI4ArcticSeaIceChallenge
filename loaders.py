@@ -13,6 +13,7 @@ __date__ = '2022-10-17'
 
 # -- Built-in modules -- #
 import os
+import gc
 
 # -- Third-party modules -- #
 import copy
@@ -23,6 +24,170 @@ from torch.utils.data import Dataset
 import math
 
 # -- Proprietary modules -- #
+
+# AI4ArcticChallengeDataset class without random crop
+class AI4ArcticChallengeDatasetNoRandomCrop(Dataset):
+    
+    def __init__(self, options, files):
+        self.options = options
+        self.files = files
+        
+        self.patch_c = len(self.options['train_variables']) + len(self.options['charts'])
+        
+    def __len__(self):
+        return len(self.files)
+    
+    def crop(self, scene, row, col):
+        """Parameters
+        ----------
+        scene :
+            Xarray dataset; a scene from ASID3 ready-to-train challenge dataset.
+
+        Returns
+        -------
+        patch :
+            Numpy array with shape (len(train_variables), patch_height, patch_width). None if empty patch.
+        """
+        
+        patch = np.zeros((len(self.options['full_variables']) + len(self.options['amsrenv_variables']),
+                          self.options['patch_size'], self.options['patch_size']))
+        
+        # Take row and col from arguments
+        
+        row_rand = row
+        assert row_rand >= 0 and row_rand < scene['SIC'].values.shape[0] - self.options['patch_size']
+        col_rand = col
+        assert col_rand >= 0 and col_rand < scene['SIC'].values.shape[1] - self.options['patch_size']
+        
+         # Equivalent in amsr and env variable grid.
+        amsrenv_row = row_rand / self.options['amsrenv_delta']
+        amsrenv_row_dec = int(amsrenv_row - int(amsrenv_row))  # Used in determining the location of the crop in between pixels.
+        amsrenv_row_index_crop = amsrenv_row_dec * self.options['amsrenv_delta'] * amsrenv_row_dec
+        amsrenv_col = col_rand / self.options['amsrenv_delta']
+        amsrenv_col_dec = int(amsrenv_col - int(amsrenv_col))
+        amsrenv_col_index_crop = amsrenv_col_dec * self.options['amsrenv_delta'] * amsrenv_col_dec
+        
+        # - Discard patches with too many meaningless pixels (optional).
+        if np.sum(scene['SIC'].values[row_rand: row_rand + self.options['patch_size'], 
+                                      col_rand: col_rand + self.options['patch_size']] != self.options['class_fill_values']['SIC']) > 1:
+            
+            # Crop full resolution variables.
+            patch[0:len(self.options['full_variables']), :, :] = scene[self.options['full_variables']].isel(
+                sar_lines=range(row_rand, row_rand + self.options['patch_size']),
+                sar_samples=range(col_rand, col_rand + self.options['patch_size'])).to_array().values
+            # Crop and upsample low resolution variables.
+            patch[len(self.options['full_variables']):, :, :] = torch.nn.functional.interpolate(
+                input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values[
+                    :, 
+                    int(amsrenv_row): int(amsrenv_row + np.ceil(self.options['amsrenv_patch'])),
+                    int(amsrenv_col): int(amsrenv_col + np.ceil(self.options['amsrenv_patch']))]
+                ).unsqueeze(0),
+                size=self.options['amsrenv_upsample_shape'],
+                mode=self.options['loader_upsampling']).squeeze(0)[
+                :,
+                int(np.around(amsrenv_row_index_crop)): int(np.around(amsrenv_row_index_crop + self.options['patch_size'])),
+                int(np.around(amsrenv_col_index_crop)): int(np.around(amsrenv_col_index_crop + self.options['patch_size']))].numpy()
+
+        # In case patch does not contain any valid pixels - return None.
+        else:
+            patch = None
+
+        return patch
+    
+    
+    def prep_dataset(self, patches):
+        """
+        Convert patches from 4D numpy array to 4D torch tensor.
+
+        Parameters
+        ----------
+        patches : ndarray
+            Patches sampled from ASID3 ready-to-train challenge dataset scenes [PATCH, CHANNEL, H, W].
+
+        Returns
+        -------
+        x :
+            4D torch tensor; ready training data.
+        y : Dict
+            Dictionary with 3D torch tensors for each chart; reference data for training data x.
+        """
+        # Convert training data to tensor.
+        x = torch.from_numpy(patches[:, len(self.options['charts']):]).type(torch.float)
+
+        # Store charts in y dictionary.
+        y = {}
+        for idx, chart in enumerate(self.options['charts']):
+            y[chart] = torch.from_numpy(patches[:, idx]).type(torch.long)
+
+        return x, y
+        
+        
+    def __getitem__(self, idx):
+        """
+        Get batch. Function required by Pytorch dataset.
+
+        Returns
+        -------
+        x :
+            4D torch tensor; ready training data.
+        y : Dict
+            Dictionary with 3D torch tensors for each chart; reference data for training data x.
+        """
+        # Placeholder to fill with data.
+        patches = np.zeros((self.options['batch_size'], self.patch_c,
+                            self.options['patch_size'], self.options['patch_size']))
+        sample_n = 0
+
+        # Continue until batch is full.
+        while sample_n < self.options['batch_size']:
+            # - Open memory location of scene. Uses 'Lazy Loading'.
+            scene_id = idx
+
+            # - Load scene
+            scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[scene_id]))
+            # - Extract patches
+            # try:
+            x_dim = scene['SIC'].values.shape[0]
+            y_dim = scene['SIC'].values.shape[1]
+            # Split the scene into patches
+            row_col_indices = np.array(np.meshgrid(np.arange(0, x_dim - self.options['patch_size'], self.options['patch_size']),
+                                                        np.arange(0, y_dim - self.options['patch_size'], self.options['patch_size']))).T.reshape(-1, 2)
+            
+            # Crop all patches in the scene
+            patches_in_scene = np.cat(np.array([self.crop(scene, row, col) for row, col in row_col_indices], dtype=object))
+            
+            # Remove None patches
+            # patches_in_scene = patches_in_scene[~np.all(patches_in_scene == None, axis=(1, 2, 3))]
+            # except:
+            #     print(f"Cropping in {self.files[scene_id]} failed.")
+            #     print(f"Scene size: {scene['SIC'].values.shape} for crop shape: ({self.options['patch_size']}, {self.options['patch_size']})")
+            #     print('Skipping scene.')
+            #     continue
+            
+        
+            # -- Stack the scene patches in patches
+            patches[sample_n, :, :, :] = patches_in_scene
+            sample_n += 1 # Update the index.
+
+        # Prepare training arrays
+        x, y = self.prep_dataset(patches=patches)
+        name = self.files[scene_id]
+        
+        if not self.test:
+            masks = {}
+            for chart in self.options['charts']:
+                masks[chart] = (y[chart] == self.options['class_fill_values'][chart]).squeeze()
+                
+        else:
+            masks = (x.squeeze()[0, :, :] == self.options['train_fill_value']).squeeze()
+
+        return x, y, masks, name
+
+        
+        
+
+
+    
 
 
 class AI4ArcticChallengeDataset(Dataset):
@@ -172,6 +337,159 @@ class AI4ArcticChallengeDataset(Dataset):
         return x, y
 
 
+class AI4ArcticChallengeValDataset(Dataset):
+    """Pytorch dataset for loading batches of patches of scenes from the ASID V2 data set."""
+
+    def __init__(self, options, files):
+        self.options = options
+        self.files = files
+
+        # Channel numbers in patches, includes reference channel.
+        self.patch_c = len(self.options['train_variables']) + len(self.options['charts'])
+
+    def __len__(self):
+        """
+        Provide number of iterations per epoch. Function required by Pytorch dataset.
+
+        Returns
+        -------
+        Number of iterations per epoch.
+        """
+        return self.options['epoch_len']
+    
+    
+    def random_crop(self, scene):
+        """
+        Perform random cropping in scene.
+
+        Parameters
+        ----------
+        scene :
+            Xarray dataset; a scene from ASID3 ready-to-train challenge dataset.
+
+        Returns
+        -------
+        patch :
+            Numpy array with shape (len(train_variables), patch_height, patch_width). None if empty patch.
+        """
+        patch = np.zeros((len(self.options['full_variables']) + len(self.options['amsrenv_variables']),
+                          self.options['val_patch_size'], self.options['val_patch_size']))
+        
+        # Get random index to crop from.
+        row_rand = np.random.randint(low=0, high=scene['SIC'].values.shape[0] - self.options['val_patch_size'])
+        col_rand = np.random.randint(low=0, high=scene['SIC'].values.shape[1] - self.options['val_patch_size'])
+        # Equivalent in amsr and env variable grid.
+        amsrenv_row = row_rand / self.options['amsrenv_delta']
+        amsrenv_row_dec = int(amsrenv_row - int(amsrenv_row))  # Used in determining the location of the crop in between pixels.
+        amsrenv_row_index_crop = amsrenv_row_dec * self.options['amsrenv_delta'] * amsrenv_row_dec
+        amsrenv_col = col_rand / self.options['amsrenv_delta']
+        amsrenv_col_dec = int(amsrenv_col - int(amsrenv_col))
+        amsrenv_col_index_crop = amsrenv_col_dec * self.options['amsrenv_delta'] * amsrenv_col_dec
+        
+        # - Discard patches with too many meaningless pixels (optional).
+        if np.sum(scene['SIC'].values[row_rand: row_rand + self.options['val_patch_size'], 
+                                      col_rand: col_rand + self.options['val_patch_size']] != self.options['class_fill_values']['SIC']) > 1:
+            
+            # Crop full resolution variables.
+            patch[0:len(self.options['full_variables']), :, :] = scene[self.options['full_variables']].isel(
+                sar_lines=range(row_rand, row_rand + self.options['val_patch_size']),
+                sar_samples=range(col_rand, col_rand + self.options['val_patch_size'])).to_array().values
+            # Crop and upsample low resolution variables.
+            patch[len(self.options['full_variables']):, :, :] = torch.nn.functional.interpolate(
+                input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values[
+                    :, 
+                    int(amsrenv_row): int(amsrenv_row + np.ceil(self.options['amsrenv_patch'])),
+                    int(amsrenv_col): int(amsrenv_col + np.ceil(self.options['amsrenv_patch']))]
+                ).unsqueeze(0),
+                size=self.options['amsrenv_upsample_shape'],
+                mode=self.options['loader_upsampling']).squeeze(0)[
+                :,
+                int(np.around(amsrenv_row_index_crop)): int(np.around(amsrenv_row_index_crop + self.options['patch_size'])),
+                int(np.around(amsrenv_col_index_crop)): int(np.around(amsrenv_col_index_crop + self.options['patch_size']))].numpy()
+
+        # In case patch does not contain any valid pixels - return None.
+        else:
+            patch = None
+
+        return patch
+
+
+    def prep_dataset(self, patches):
+        """
+        Convert patches from 4D numpy array to 4D torch tensor.
+
+        Parameters
+        ----------
+        patches : ndarray
+            Patches sampled from ASID3 ready-to-train challenge dataset scenes [PATCH, CHANNEL, H, W].
+
+        Returns
+        -------
+        x :
+            4D torch tensor; ready training data.
+        y : Dict
+            Dictionary with 3D torch tensors for each chart; reference data for training data x.
+        """
+        # Convert training data to tensor.
+        x = torch.from_numpy(patches[:, len(self.options['charts']):]).type(torch.float)
+
+        # Store charts in y dictionary.
+        y = {}
+        for idx, chart in enumerate(self.options['charts']):
+            y[chart] = torch.from_numpy(patches[:, idx]).type(torch.long)
+
+        return x, y
+
+
+    def __getitem__(self, idx):
+        """
+        Get batch. Function required by Pytorch dataset.
+
+        Returns
+        -------
+        x :
+            4D torch tensor; ready training data.
+        y : Dict
+            Dictionary with 3D torch tensors for each chart; reference data for training data x.
+        """
+        # Placeholder to fill with data.
+        patches = np.zeros((self.options['val_batch_size'], self.patch_c,
+                            self.options['val_patch_size'], self.options['val_patch_size']))
+        sample_n = 0
+
+        # Continue until batch is full.
+        while sample_n < self.options['val_batch_size']:
+            # - Open memory location of scene. Uses 'Lazy Loading'.
+            # scene_id = np.random.randint(low=0, high=len(self.files), size=1).item()
+
+            # - Load scene
+            scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[idx]))
+            # - Extract patches
+            try:
+                scene_patch = self.random_crop(scene)
+            except:
+                print(f"Cropping in {self.files[idx]} failed.")
+                print(f"Scene size: {scene['SIC'].values.shape} for crop shape: ({self.options['val_patch_size']}, {self.options['val_patch_size']})")
+                print('Skipping scene.')
+                continue
+            
+            if scene_patch is not None:
+                # -- Stack the scene patches in patches
+                patches[sample_n, :, :, :] = scene_patch
+                sample_n += 1 # Update the index.
+
+        # Prepare training arrays
+        x, y = self.prep_dataset(patches=patches)
+
+        return x, y
+
+# if not self.test:
+#     masks = {}
+#     for chart in self.options['charts']:
+#         masks[chart] = (y[chart] == self.options['class_fill_values'][chart]).squeeze()
+            
+#     else:
+#         masks = (x.squeeze()[0, :, :] == self.options['train_fill_value']).squeeze()
 class AI4ArcticChallengeTestDataset(Dataset):
     """Pytorch dataset for loading full scenes from the ASID ready-to-train challenge dataset for inference."""
 
@@ -205,19 +523,59 @@ class AI4ArcticChallengeTestDataset(Dataset):
         y :
             Dict with 3D torch tensors for each reference chart; reference inference data for x. None if test is true.
         """
-        x = torch.cat((torch.from_numpy(scene[self.options['sar_variables']].to_array().values).unsqueeze(0),
-                      torch.nn.functional.interpolate(
-                          input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values).unsqueeze(0),
-                          size=scene['nersc_sar_primary'].values.shape, 
-                          mode=self.options['loader_upsampling'])),
-                      axis=1)
+        patch_size: int = self.options['val_patch_size']
+        slice_size: tuple = None
         
-        if not self.test:
-            y = {chart: scene[chart].values for chart in self.options['charts']}
+        
+        if patch_size is not None:
+            # Set seed
+            np.random.seed(0)
+            row_rand = np.random.randint(low=0, high=scene['nersc_sar_primary'].values.shape[0] - self.options['val_patch_size'])
+            col_rand = np.random.randint(low=0, high=scene['nersc_sar_primary'].values.shape[1] - self.options['val_patch_size'])
+        
+            # Crate a random crop of the scene.
+            x = torch.cat((torch.from_numpy(scene[self.options['sar_variables']].to_array().values).unsqueeze(0),
+                        torch.nn.functional.interpolate(
+                            input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values).unsqueeze(0),
+                            size=scene['nersc_sar_primary'].values.shape, 
+                            mode=self.options['loader_upsampling'])),
+                        axis=1)[:, :, row_rand:row_rand + patch_size, col_rand:col_rand + patch_size]
+            if not self.test:
+                y = {chart: scene[chart].values[row_rand:row_rand + patch_size, col_rand:col_rand + patch_size] for chart in self.options['charts']}
 
+            else:
+                y = None
+                
+                
+        elif slice_size is not None:
+            scene_x = scene['nersc_sar_primary'].values.shape[0] if scene['nersc_sar_primary'].values.shape[0] % slice_size[0] == 0 else scene['nersc_sar_primary'].values.shape[0] + (( slice_size[0] - (scene['nersc_sar_primary'].values.shape[0] % slice_size[0])))
+            scene_y = scene['nersc_sar_primary'].values.shape[1] if scene['nersc_sar_primary'].values.shape[1] % slice_size[1] == 0 else scene['nersc_sar_primary'].values.shape[1] + (( slice_size[1] - (scene['nersc_sar_primary'].values.shape[1] % slice_size[1])))
+            
+            
+            x = torch.cat((torch.from_numpy(scene[self.options['sar_variables']].to_array().values).unsqueeze(0),
+                        torch.nn.functional.interpolate(
+                            input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values).unsqueeze(0),
+                            size=(scene_x, scene_y), 
+                            mode=self.options['loader_upsampling'])),
+                        axis=1)
+            
+            
+            
+            
         else:
-            y = None
+            x = torch.cat((torch.from_numpy(scene[self.options['sar_variables']].to_array().values).unsqueeze(0),
+                        torch.nn.functional.interpolate(
+                            input=torch.from_numpy(scene[self.options['amsrenv_variables']].to_array().values).unsqueeze(0),
+                            size=scene['nersc_sar_primary'].values.shape, 
+                            mode=self.options['loader_upsampling'])),
+                        axis=1)
         
+            if not self.test:
+                y = {chart: scene[chart].values for chart in self.options['charts']}
+
+            else:
+                y = None
+            
         return x, y
 
     def __getitem__(self, idx):
@@ -236,11 +594,15 @@ class AI4ArcticChallengeTestDataset(Dataset):
             Name of scene.
 
         """
-        scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[idx]))
-
+        scene = xr.open_dataset(os.path.join(self.options['path_to_processed_data'], self.files[idx]), engine='netcdf4')
         x, y = self.prep_scene(scene)
+        
+        del scene
+        gc.collect()
+        
         name = self.files[idx]
         
+        # TODO: Does this work correctly?      
         if not self.test:
             masks = {}
             for chart in self.options['charts']:
@@ -248,7 +610,8 @@ class AI4ArcticChallengeTestDataset(Dataset):
                 
         else:
             masks = (x.squeeze()[0, :, :] == self.options['train_fill_value']).squeeze()
-
+        
+        
         return x, y, masks, name
 
 
