@@ -142,7 +142,34 @@ Performance | total score | SIC | SOD | FLOE | comment
 * slower model build-up for transfer learning
 
 ---
+## U-Net Model Attention
 
+`*_attention.py`
+
+Maybe in Magnus part?
+<!-- ![Example polygone of a scene, sea ice concentration](presentation_pics/unet.png) -->
+
+* we used the attention mechanism from the paper [Attention U-Net: Learning Where to Look for the Pancreas](https://arxiv.org/abs/1804.03999)
+* it adds attention to the u-net model and is therefore able to focus on the most important parts of the image:
+![Example polygone of a scene, sea ice concentration](presentation_pics/unet_attention.png)
+* due to the increased memory usage, we needed to reduce the size of the validation images
+* 
+---
+
+## Statistics of the Runs
+
+Performance | total score | SIC | SOD | FLOE | comment
+---|---|---|---|---|---
+`Pizza Neapolitana` | 74.5 | 75.2 | 76.4 | 69.4 | 4-lvl u-net
+`Pizza Margherita` | 71.5 | 70.4 | 74.3 | 68.13 | 8-lvl u-net
+`Pizza Basilico` | 75.6 | 78.2 | 75.3 | 70.0 | more epochs
+`Pizza Quattro Formaggi` | 68.1 | 68.8 | 69.9 | 62.8 | 8-lvl, all improvements
+`Pizza Quattro Stagioni` | 77.7 | 83.82 | 77.50 | 66.13 | 6-lvl, all improvements
+
+* long training might be necessary, but the best model was always already around epoch `40`
+* slower model build-up for transfer learning
+
+---
 ## Error Distributions
 
 * there are strong differences across locations, but this is partly due to the resampling

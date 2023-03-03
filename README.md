@@ -42,16 +42,23 @@ The customized datasets and dataloader can be found in loaders.py. It randomly c
 ### Training
 The training can be started by executing the train.py script. It can be configured within the script by specifying arguments in training_options. The training options are well explained within the script, with a special focus on specific options for slow hardware.
 The progess is logged to the mlflow server and best model, according to the combined score, is saved to the models directory. The model is saved as a pytorch state dict. The models directory also contains the training ooptions as pickle file and other relevat information.
-Our logs are also available.
-
+Our logs are also available in logs/.
 Next to the train.py file, we also have a a jupyter notebook with identlical use.
 
 
-### Evaluation
-We evaluate after every epoch. If additional evaluation is needed, we can load an arbitrary model and evaluate it in the eval.py file.
+We evaluate after every epoch. If additional evaluation is needed, we can load an arbitrary model and evaluate it in the eval.py file. The validation can either be executed on whole scenes or on patches. This can come in handy if the used model is very complex and the memory is not sufficient to load the whole scene. The evaluation is also logged to the mlflow server.
 
 ### MLFlow
-Nice tool, also works on local machine.
+We use MLFlow as a tracking tool for our experiments. The MLFlow server is either hosted on the EOxHub server or locally. The server can be accessed via the following link: https://mlflow.eox.at/. The server is also available via ssh tunneling. 
+For the local server, the following command can be used:
+```
+$ mlflow ui --backend-store-uri sqlite:///mlruns.db --host
+```
+After starting the server, the UI can be accessed via http://localhost:5000.
+Additinal info on MlFlow can also be found in the quickstart_mlflow.ipynb file.
+
+### Submission
+In case that the trained model wants to be submitted to the challenge, the model can be infered on the test set in test_upload.ipynb. The predicions are saved as a .nc file and can be uploaded to the challenge website.
 
 ## Runs
 
