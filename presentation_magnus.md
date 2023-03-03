@@ -117,6 +117,12 @@ A tour through the repository.
 
 ---
 
+## U-Net
+
+![Example polygone of a scene, sea ice concentration](presentation_pics/unet.png)
+
+---
+
 ## U-Net Model Improvements
 
 `*_improvements.py` (and earlier `*_transfer.py`)
@@ -146,9 +152,6 @@ Performance | total score | SIC | SOD | FLOE | comment
 
 `*_attention.py`
 
-Maybe in Magnus part?
-<!-- ![Example polygone of a scene, sea ice concentration](presentation_pics/unet.png) -->
-
 * we used the attention mechanism from the paper [Attention U-Net: Learning Where to Look for the Pancreas](https://arxiv.org/abs/1804.03999)
 * it adds attention to the u-net model and is therefore able to focus on the most important parts of the image:
 ![Example polygone of a scene, sea ice concentration](presentation_pics/unet_attention.png)
@@ -171,6 +174,8 @@ Performance | total score | SIC | SOD | FLOE | comment
 
 ---
 ## Error Distributions
+
+goto `visualize_metadata.ipynb`
 
 * there are strong differences across locations, but this is partly due to the resampling
 * some months are clearly easier to predict than others, but no clear seasonality can be seen
