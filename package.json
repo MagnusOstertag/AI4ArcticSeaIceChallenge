@@ -5,7 +5,7 @@
   "license": "WTFPL",
   "private": true,
   "scripts": {
-    "build": "rimraf public && npm run -s deck",
+    "build": "rimraf public && npm run -s og-image && npm run -s deck",
     "deck": "marp --no-stdin presentation_magnus.md -o public/index.html && ncp assets public/assets",
     "og-image": "marp --no-stdin presentation_magnus.md -o public/og-image.jpg",
     "start": "marp -ps .",
