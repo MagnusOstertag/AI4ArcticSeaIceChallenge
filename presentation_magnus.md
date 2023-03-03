@@ -88,6 +88,8 @@ see the data manual.
   * SAR data has ambiguities, it has a high spatial resolution
   * MWR data has good contrast between open water and ice
 * auxiliary data: numerical weather prediction model data, incidence angle of the SAR sensor and distance from land
+* data loader, upload script and basic u-net given
+* computational resources: 200h of CPU time, 40h of GPU time with `mlflow`
 
 ---
 
@@ -95,16 +97,16 @@ see the data manual.
 
 ![Example polygone of a scene, sea ice concentration](presentation_pics/polygon_icechart_fig11_manual.png)
 
-Of sea ice concentration, see the data manual.
+Data of the sea ice concentration, see the data manual.
 
 ---
 
 ## Understanding the Data
 
-see `distributions.ipynb`
+goto `distributions.ipynb`
 
-* train vs. test vs. validation distribution
-* coverage of the scenes
+* train vs. test vs. validation distribution for the different classes
+* pixel counting the coverage of the scenes
 * (inter-analyst accuracy)
 
 ---
@@ -121,23 +123,31 @@ A tour through the repository.
 
 * regression loss when using a regression metric `unet*.py`, `quickstart*.ipynb`
 * transfer learning `unet_transfer.py`
-* biased sampling of the training data: `loaders_improvements.py`
+* biased sampling of the training data: `loaders_improvements.py` -> goto `misc/`
 * diagnostics output `quickstart_improvements.ipynb`, `loaders_improvements.ipynb`
 
 ---
 
 ## Statistics of the Runs
 
-TODO
+Performance | total score | SIC | SOD | FLOE | comment
+---|---|---|---|---|---
+`Pizza Marinara` | 74.5 | 75.2 | 76.4 | 69.4 | 4-lvl u-net
+`Pizza Margherita` | 71.5 | 70.4 | 74.3 | 68.13 | 8-lvl u-net
+`Pizza Basilico` | 75.6 | 78.2 | 75.3 | 70.0 | more epochs
+`Pizza Quattro Formaggi` | 68.1 | 68.8 | 69.9 | 62.8 | 8-lvl, all improvements
+`Pizza Quattro Stagioni` | 77.7 | 83.82 | 77.50 | 66.13 | 6-lvl, all improvements
+
+* long training might be necessary, but the best model was always already around epoch `40`
+* slower model build-up for transfer learning
 
 ---
 
 ## Error Distributions
 
-TODO
-
-* understand in which conditions the predictions are the worst
-* resample
+* there are strong differences across locations, but this is partly due to the resampling
+* some months are clearly easier to predict than others, but no clear seasonality can be seen
+* the weather service has a slight, but consistent effect
 
 ---
 
@@ -159,5 +169,6 @@ TODO
 
 ### and possible improvements
 
-* featurize additional information like ice chart provider, month (?)
+* featurize additional information like location and month
+* build incremental transfer learning models, train even longer
 * play with the learning rate
