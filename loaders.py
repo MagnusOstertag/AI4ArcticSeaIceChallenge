@@ -919,10 +919,11 @@ class AI4ArcticChallengeTestDataset(Dataset):
         
         if patch_size is not None:
             # Set seed
-            np.random.seed(0)
+            # np.random.seed(0)
             row_rand = np.random.randint(low=0, high=scene['nersc_sar_primary'].values.shape[0] - self.options['val_patch_size'])
             col_rand = np.random.randint(low=0, high=scene['nersc_sar_primary'].values.shape[1] - self.options['val_patch_size'])
-        
+            print(row_rand, col_rand)
+            print(patch_size)
             # Crate a random crop of the scene.
             x = torch.cat((torch.from_numpy(scene[self.options['sar_variables']].to_array().values).unsqueeze(0),
                         torch.nn.functional.interpolate(
@@ -992,7 +993,7 @@ class AI4ArcticChallengeTestDataset(Dataset):
                                                'icechart_provider', 'location']) 
         
         x, y = self.prep_scene(scene)
-        
+        del scene 
         
         gc.collect()
         
@@ -1007,44 +1008,44 @@ class AI4ArcticChallengeTestDataset(Dataset):
         else:
             masks = (x.squeeze()[0, :, :] == self.options['train_fill_value']).squeeze()
             
-        if self.metadata_flag:
-            file_name = scene.attrs['original_id']
-            file_name_split = file_name.split('_')
+        # if self.metadata_flag:
+        #     file_name = scene.attrs['original_id']
+        #     file_name_split = file_name.split('_')
 
-            sentinel_mission_identifier = file_name_split[0]
-            image_acquisition_start_date = file_name_split[4]
-            image_acquisition_start_date = pd.to_datetime(image_acquisition_start_date, format='%Y%m%dT%H%M%S')
-            image_acquisition_start_date_year = image_acquisition_start_date.year
-            image_acquisition_start_date_month = image_acquisition_start_date.month
-            image_acquisition_start_date_hour = image_acquisition_start_date.hour
-            icechart_provider = str(scene.attrs['ice_service'])
-            if icechart_provider == 'cis':
-                location = file_name_split[11]
-            elif icechart_provider == 'dmi':
-                location = file_name_split[12]
+        #     sentinel_mission_identifier = file_name_split[0]
+        #     image_acquisition_start_date = file_name_split[4]
+        #     image_acquisition_start_date = pd.to_datetime(image_acquisition_start_date, format='%Y%m%dT%H%M%S')
+        #     image_acquisition_start_date_year = image_acquisition_start_date.year
+        #     image_acquisition_start_date_month = image_acquisition_start_date.month
+        #     image_acquisition_start_date_hour = image_acquisition_start_date.hour
+        #     icechart_provider = str(scene.attrs['ice_service'])
+        #     if icechart_provider == 'cis':
+        #         location = file_name_split[11]
+        #     elif icechart_provider == 'dmi':
+        #         location = file_name_split[12]
 
-            # -- non-useful metadata
-            row_rand = np.nan
-            col_rand = np.nan
-            sample_n = np.nan
+        #     # -- non-useful metadata
+        #     row_rand = np.nan
+        #     col_rand = np.nan
+        #     sample_n = np.nan
 
-            metadata_scene = pd.DataFrame({'sentinel_mission_identifier': sentinel_mission_identifier,
-                                           'image_acquisition_start_date': image_acquisition_start_date,
-                                           'image_acquisition_start_date_year': image_acquisition_start_date_year,
-                                           'image_acquisition_start_date_month': image_acquisition_start_date_month,
-                                           'image_acquisition_start_date_hour': image_acquisition_start_date_hour,
-                                           'row_rand': row_rand,
-                                           'col_rand': col_rand,
-                                           'sample_n': sample_n,
-                                           'icechart_provider': icechart_provider,
-                                           'location': location}, index=[0])
+        #     metadata_scene = pd.DataFrame({'sentinel_mission_identifier': sentinel_mission_identifier,
+        #                                    'image_acquisition_start_date': image_acquisition_start_date,
+        #                                    'image_acquisition_start_date_year': image_acquisition_start_date_year,
+        #                                    'image_acquisition_start_date_month': image_acquisition_start_date_month,
+        #                                    'image_acquisition_start_date_hour': image_acquisition_start_date_hour,
+        #                                    'row_rand': row_rand,
+        #                                    'col_rand': col_rand,
+        #                                    'sample_n': sample_n,
+        #                                    'icechart_provider': icechart_provider,
+        #                                    'location': location}, index=[0])
         
-        del scene
         
-        if self.metadata_flag and not self.test:
-            return x, y, masks, name, metadata_scene
-        elif not self.test:
-            return x, y, masks, name, None
+        
+        # if self.metadata_flag and not self.test:
+        #     return x, y, masks, name, metadata_scene
+        # elif not self.test:
+        #     return x, y, masks, name, None
         return x, y, masks, name
         
 

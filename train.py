@@ -32,16 +32,16 @@ if local_computation:
 
 train_options = {
     # -- General options -- #
-    'model_name': 'unet_transformers',
-    'model_version': 'version_some',
-    'model_codename': 'pizza_some',
-    'test_call': False,
+    'model_name': 'unet_attention',
+    'model_version': 'version_0',
+    'model_codename': 'pizza_vulcano',
+    'test_call': True,
     'eval': True,
     'mlflow': True,
     'reproducable': False,
 
     # -- Model options -- #
-    'model_architecture': 'unet_improvements', # 'unet', 'unet_attention', 'unet_transformers', 'unet_improvements
+    'model_architecture': 'unet_attention', # 'unet', 'unet_attention', 'unet_transformers', 'unet_improvements
     'optimizer': 'adam',
 
     # -- Training options -- #
@@ -49,11 +49,11 @@ train_options = {
     'path_to_processed_data': os.environ['AI4ARCTIC_DATA'],  # Replace with data directory path.
     'path_to_env': '',  # Replace with environmment directory path.
     'lr': 0.0001,  # Optimizer learning rate.
-    'epochs': 20,  # Number of epochs before training stop.
+    'epochs': 30,  # Number of epochs before training stop.
     'epoch_len': 500,  # Number of batches for each epoch.
-    'patch_size': 128,  # Size of patches sampled. Used for both Width and Height.
+    'patch_size': 512,  # Size of patches sampled. Used for both Width and Height.
     'batch_size': 4,  # Number of patches for each batch.
-    'val_patch_size': 200,  # Size of patches sampled for validation. Used for both Width and Height.
+    'val_patch_size': 100,  # Size of patches sampled for validation. Used for both Width and Height.
     'loader_upsampling': 'nearest',  # How to upscale low resolution variables to high resolution.
     'loss_sic': 'classification', # Loss function for SIC. 'classification' or 'regression'.
     
@@ -98,8 +98,8 @@ train_options = {
         },
     },
     'num_val_scenes': 20,  # Number of scenes randomly sampled from train_list to use in validation.
-    'validation_seed': 0,  # Seed used to sample validation scenes.
-    'dataloader_seed': 0,  # Seed used to sample patches from the scenes.
+    'validation_seed': 42,  # Seed used to sample validation scenes.
+    'dataloader_seed': 42,  # Seed used to sample patches from the scenes.
 
     # -- GPU/cuda options -- #
     'gpu_id': 0,  # Index of GPU. In case of multiple GPUs.
@@ -109,7 +109,7 @@ train_options = {
 
     # -- U-Net Options -- # 
     # ! For Transfoemrs, first filter must correspond to number of classes ! #
-    'unet_conv_filters': [24, 8, 16, 32],     # Number of filters in the U-Net.
+    'unet_conv_filters': [8, 16, 32, 64, 64, 64],     # Number of filters in the U-Net.
     'conv_kernel_size': (3, 3),  # Size of convolutional kernels.
     'conv_stride_rate': (1, 1),  # Stride rate of convolutional kernels.
     'conv_dilation_rate': (1, 1),  # Dilation rate of convolutional kernels.
@@ -130,8 +130,8 @@ train_options = {
 
 # -- Test call -- #
 if train_options['test_call']:
-    train_options['epochs'] = 1
-    train_options['epoch_len'] = 10
+    train_options['epochs'] = 3
+    train_options['epoch_len'] = 30
     
 # --Set seed for reproducibility -- #
 np.random.seed(train_options['validation_seed']) # Seed used to sample validation scenes.
@@ -354,7 +354,10 @@ with mlflow.start_run() as run: # Start MLFlow run.
             del inf_x, inf_y, masks, output  # Free memory.
             # torch.cuda.empty_cache()
             # gc.collect()
-
+            torch.save(obj={'model_state_dict': net.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'epoch': epoch},
+                            f='models/'+train_options['model_name']+'/'+train_options['model_version']+'/best_model'+str(epoch)+'.pt')
         # loss_val_mean = torch.true_divide(loss_val, len(train_options['validate_list'])).detach().item()
         # mlflow.log_metric(key="mean_loss_val", value=loss_val_mean)
         # - Compute the relevant scores.
