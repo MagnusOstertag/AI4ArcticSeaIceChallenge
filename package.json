@@ -7,6 +7,7 @@
   "scripts": {
     "build": "rimraf public && npm run -s deck",
     "deck": "marp --no-stdin presentation_magnus.md -o public/index.html",
+    "og-image": "marp --no-stdin presentation_magnus.md -o public/og-image.jpg",
     "start": "marp -ps .",
     "vercel-build": "npm i puppeteer --no-save && MARP_USER=root CHROME_PATH=$(node -e \"console.log(require('puppeteer').executablePath())\") npm run build"
   },
