@@ -120,7 +120,7 @@ A tour through the repository.
 ## U-Net Model Improvements
 
 `*_improvements.py` (and earlier `*_transfer.py`)
-
+![Example polygone of a scene, sea ice concentration](presentation_pics/unet.png)
 * regression loss when using a regression metric `unet*.py`, `quickstart*.ipynb`
 * transfer learning `unet_transfer.py`
 * biased sampling of the training data: `loaders_improvements.py` -> goto `misc/`
@@ -145,9 +145,6 @@ Performance | total score | SIC | SOD | FLOE | comment
 ## U-Net Model Attention
 
 `*_attention.py`
-
-Maybe in Magnus part?
-<!-- ![Example polygone of a scene, sea ice concentration](presentation_pics/unet.png) -->
 
 * we used the attention mechanism from the paper [Attention U-Net: Learning Where to Look for the Pancreas](https://arxiv.org/abs/1804.03999)
 * it adds attention to the u-net model and is therefore able to focus on the most important parts of the image:
