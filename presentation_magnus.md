@@ -156,21 +156,21 @@ Performance | total score | SIC | SOD | FLOE | comment
 * it adds attention to the u-net model and is therefore able to focus on the most important parts of the image:
 ![Example polygone of a scene, sea ice concentration](presentation_pics/unet_attention.png)
 * due to the increased memory usage, we needed to reduce the size of the validation images
-* 
 ---
 
 ## Statistics of the Runs
 
 Performance | total score | SIC | SOD | FLOE | comment
 ---|---|---|---|---|---
-`Pizza Neapolitana` | 74.5 | 75.2 | 76.4 | 69.4 | 4-lvl u-net
-`Pizza Margherita` | 71.5 | 70.4 | 74.3 | 68.13 | 8-lvl u-net
-`Pizza Basilico` | 75.6 | 78.2 | 75.3 | 70.0 | more epochs
-`Pizza Quattro Formaggi` | 68.1 | 68.8 | 69.9 | 62.8 | 8-lvl, all improvements
-`Pizza Quattro Stagioni` | 77.7 | 83.82 | 77.50 | 66.13 | 6-lvl, all improvements
+`Pizza Neapolitana` | 53.3 | 36.3 | 65.2 | 63.4 | u-net attention 6-lvl conv-512
+`Pizza Vulcano` | 50.4 | 32.6 | 60.0 | 63.4 | u-net attention 6-lvl conv-64
+`Pizza Vulcano Val` | 81.2 | 83.1 | 77.9 | 83.9 | u-net attention 6-lvl conv-64
+`Pizza Calzone Val` | 78.9 | 77.7 | 77.9 | 83.6 | u-net attention 6-lvl conv-256
 
-* long training might be necessary, but the best model was always already around epoch `40`
-* slower model build-up for transfer learning
+
+* All attention models were trained only for 10 epochs
+* The discrapancy between the validation and test scores is due to the fact that the validation images were reduced in size
+
 
 ---
 ## Error Distributions
