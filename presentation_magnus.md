@@ -117,6 +117,12 @@ A tour through the repository.
 
 ---
 
+## U-Net
+
+![Example polygone of a scene, sea ice concentration](presentation_pics/unet.png)
+
+---
+
 ## U-Net Model Improvements
 
 `*_improvements.py` (and earlier `*_transfer.py`)
@@ -168,6 +174,8 @@ Performance | total score | SIC | SOD | FLOE | comment
 
 ---
 ## Error Distributions
+
+goto `visualize_metadata.ipynb`
 
 * there are strong differences across locations, but this is partly due to the resampling
 * some months are clearly easier to predict than others, but no clear seasonality can be seen
