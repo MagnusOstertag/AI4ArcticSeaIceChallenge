@@ -67,6 +67,12 @@ def compute_metrics(true, pred, charts, metrics):
     """
     scores = {}
     for chart in charts:
+        # - in development mode it can be the case that the whole scene is masked
+        # - in that case the true and pred arrays are empty -> metric to 0
+        if true[chart] is np.nan and pred[chart] is np.nan:
+            print(f"WARNING: Calculation of the score for {chart} is not possible as the whole scene is masked.")
+            scores[chart] = 0
+            continue
         if true[chart].ndim == 1 and pred[chart].ndim == 1:
             scores[chart] = np.round(metrics[chart]['func'](true=true[chart], pred=pred[chart]) * 100, 3)
         else:

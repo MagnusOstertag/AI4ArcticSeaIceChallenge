@@ -2,6 +2,7 @@
 import gc
 import os
 import sys
+import glob
 
 # -- Third-part modules -- #
 import json
@@ -18,7 +19,7 @@ import pickle
 from functions import chart_cbar, r2_metric, f1_metric, compute_metrics  # Functions to calculate metrics and show the relevant chart colorbar.
 from loaders import AI4ArcticChallengeDataset, AI4ArcticChallengeTestDataset, get_variable_options  # Custom dataloaders for regular training and validation.
 from unet import UNet  # Convolutional Neural Network model
-from utils import CHARTS, SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP, SCENE_VARIABLES, colour_str
+from utils import CHARTS, SIC_LOOKUP, SOD_LOOKUP, FLOE_LOOKUP, SCENE_VARIABLES, colour_str, EarlyStopper
 
 
 # -- Environmental variables -- #
@@ -32,7 +33,7 @@ if local_computation:
 train_options = {
     # -- General options -- #
     'model_name': 'unet_transformers',
-    'model_version': 'version_32_0',
+    'model_version': 'version_some',
     'model_codename': 'pizza_some',
     'test_call': False,
     'eval': True,
@@ -40,7 +41,7 @@ train_options = {
     'reproducable': False,
 
     # -- Model options -- #
-    'model_architecture': 'unet_atention',
+    'model_architecture': 'unet_improvements', # 'unet', 'unet_attention', 'unet_transformers', 'unet_improvements
     'optimizer': 'adam',
 
     # -- Training options -- #
@@ -197,11 +198,12 @@ elif train_options['model_architecture'] == 'unet_transformers':
     from unet_transfomers import TransformerUNet
     net = TransformerUNet(options=train_options).to(device)
 elif train_options['model_architecture'] == 'unet_attention':
-    from unet_attention import AttentionUNet
-    net = AttentionUNet(options=train_options).to(device)
+    print('Using attention U-Net')
+    from unet_attention import UNetAttention
+    net = UNetAttention(options=train_options).to(device)
 elif train_options['model_architecture'] == 'unet_improvements':
-    from unet_improvements import ImprovementsUNet
-    net = ImprovementsUNet(options=train_options).to(device)
+    from unet_improvements import UNet
+    net = UNet(options=train_options).to(device)
 elif train_options['model_architecture'] == 'unet_transfer':
     from unet_transfer import TransferUNet
     net = TransferUNet(options=train_options).to(device)
@@ -254,7 +256,6 @@ experiment.experiment_id
 best_combined_score = 0  # Best weighted model score.
 
 if train_options['early_stopping']:
-    from utils.early_stopper import EarlyStopper
     early_stopper = EarlyStopper(patience = 4, min_delta=0.3)
 
 with mlflow.start_run() as run: # Start MLFlow run.
